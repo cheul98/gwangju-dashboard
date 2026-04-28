@@ -1,0 +1,863 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>경기도 광주시 아파트 분양 대시보드</title>
+<style>
+:root{
+  --bg:#0d1117;--sur:#161b22;--sur2:#21262d;--bor:#30363d;
+  --txt:#e6edf3;--mut:#7d8590;--acc:#58a6ff;--grn:#3fb950;
+  --red:#f78166;--pur:#d2a8ff;--yel:#e3b341;
+  --mono:ui-monospace,'Cascadia Code','Source Code Pro',monospace;
+  --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--bg);color:var(--txt);font-family:var(--sans);font-size:14px}
+nav{background:var(--sur);border-bottom:1px solid var(--bor);padding:12px 24px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:200}
+nav h1{font-size:14px;font-weight:600;color:var(--acc)}
+nav h1 span{color:var(--mut);font-weight:400}
+.tabs{display:flex;gap:4px}
+.tab-btn{padding:6px 14px;border-radius:6px;border:1px solid var(--bor);background:transparent;color:var(--mut);cursor:pointer;font-size:13px;transition:all .15s}
+.tab-btn.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.tab-btn:hover:not(.on){color:var(--acc);border-color:var(--acc)}
+.view{display:none}.view.on{display:block}
+
+/* ── MAP ── */
+#v-map{display:grid;grid-template-columns:1fr 370px;height:calc(100vh - 49px)}
+#map-wrap{position:relative;overflow:hidden;background:#1a1f2e;cursor:grab;user-select:none}
+#map-wrap:active{cursor:grabbing}
+#tile-layer{position:absolute;top:0;left:0}
+#tile-layer img{position:absolute;width:256px;height:256px;image-rendering:auto;filter:brightness(.65) saturate(.5) hue-rotate(190deg);transition:opacity .3s}
+#tile-layer img.loaded{opacity:1}
+#map-bg{position:absolute;top:0;left:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(48,54,61,.3) 0,rgba(48,54,61,.3) 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,rgba(48,54,61,.3) 0,rgba(48,54,61,.3) 1px,transparent 1px,transparent 40px);z-index:0}
+#tile-status{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--mut);font-size:12px;text-align:center;z-index:5;pointer-events:none}
+#marker-layer{position:absolute;top:0;left:0;pointer-events:none}
+.mm{position:absolute;transform:translate(-50%,-50%);pointer-events:all;cursor:pointer;transition:transform .15s;z-index:10}
+.mm:hover{transform:translate(-50%,-50%) scale(1.18)}
+.mm.sel{transform:translate(-50%,-50%) scale(1.1);z-index:20}
+.mm-inner{border-radius:50%;background:rgba(10,12,18,.88);border:2.5px solid;display:flex;flex-direction:column;align-items:center;justify-content:center;box-shadow:0 0 0 4px rgba(0,0,0,.3)}
+.mm-rate{font-weight:700;font-family:monospace;line-height:1.1;text-align:center}
+.mm-name{font-size:8px;color:#aab;line-height:1.3;text-align:center;word-break:keep-all;padding:0 2px}
+.mm.sel .mm-inner{border-width:3px}
+/* 지도 컨트롤 */
+#map-ctrl{position:absolute;top:12px;right:12px;display:flex;flex-direction:column;gap:4px;z-index:30}
+.mc-btn{width:32px;height:32px;background:rgba(22,27,34,.92);border:1px solid var(--bor);border-radius:6px;color:var(--txt);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:.15s}
+.mc-btn:hover{background:var(--sur2);border-color:var(--acc);color:var(--acc)}
+#zoom-info{position:absolute;bottom:28px;right:12px;font-size:10px;color:var(--mut);background:rgba(13,17,23,.7);padding:2px 6px;border-radius:4px;z-index:30}
+#map-attr{position:absolute;bottom:6px;left:6px;font-size:10px;color:var(--mut);background:rgba(13,17,23,.7);padding:2px 6px;border-radius:3px;z-index:30}
+#map-attr a{color:var(--mut);text-decoration:none}
+#map-legend{position:absolute;top:12px;left:12px;background:rgba(22,27,34,.92);border:1px solid var(--bor);border-radius:8px;padding:10px 14px;font-size:11px;z-index:30}
+#map-legend .lt{color:var(--mut);margin-bottom:6px;font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.lr{display:flex;align-items:center;gap:6px;margin-bottom:3px}
+.ld{width:10px;height:10px;border-radius:50%;flex-shrink:0}
+
+/* 패널 */
+.panel{background:var(--sur);border-left:1px solid var(--bor);display:flex;flex-direction:column;overflow:hidden}
+.ph{padding:16px 18px 12px;border-bottom:1px solid var(--bor);flex-shrink:0}
+.ph .phl{font-size:11px;color:var(--mut);margin-bottom:4px}
+.ph .pht{font-size:16px;font-weight:700;line-height:1.3}
+.ph .phs{font-size:11px;color:var(--mut);margin-top:3px}
+.pb{flex:1;overflow-y:auto;padding:14px 18px}
+.sg{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.sc{background:var(--sur2);border:1px solid var(--bor);border-radius:8px;padding:10px 12px}
+.sc .l{font-size:10px;color:var(--mut);margin-bottom:3px}
+.sc .v{font-size:18px;font-weight:700;font-family:var(--mono)}
+.stitle{font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.06em;text-transform:uppercase;margin:12px 0 6px;display:flex;align-items:baseline;gap:6px}
+.stitle span{font-weight:400;text-transform:none;color:var(--mut);font-size:10px}
+.ptbl{width:100%;border-collapse:collapse;font-size:11px}
+.ptbl th{text-align:left;color:var(--mut);font-weight:500;font-size:10px;padding:3px 4px;border-bottom:1px solid var(--bor)}
+.ptbl td{padding:5px 4px;border-bottom:1px solid rgba(48,54,61,.35);font-family:var(--mono);font-size:11px}
+.ptbl tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:9px;font-weight:600;font-family:var(--sans)}
+.bs{background:rgba(88,166,255,.15);color:var(--acc)}
+.bm{background:rgba(63,185,80,.15);color:var(--grn)}
+.bm2{background:rgba(227,179,65,.15);color:var(--yel)}
+.bl{background:rgba(210,168,255,.15);color:var(--pur)}
+.sp{background:rgba(247,129,102,.15);color:var(--red);display:inline-block;padding:1px 5px;border-radius:3px;font-size:9px;font-family:var(--sans)}
+.rw{display:flex;align-items:center;gap:4px}
+.rb{height:3px;border-radius:2px;flex-shrink:0}
+.rv{font-size:10px;min-width:32px}
+.hint{display:flex;flex-direction:column;align-items:center;justify-content:center;height:260px;gap:8px;color:var(--mut);font-size:13px;text-align:center;line-height:1.6}
+
+/* ── STATS ── */
+#v-stats{padding:24px;max-width:1400px;margin:0 auto}
+.sh{margin-bottom:20px}.sh h2{font-size:20px;font-weight:700}.sh p{font-size:12px;color:var(--mut);margin-top:3px}
+.krow{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:20px}
+.kpi{background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:16px 18px}
+.kpi .kl{font-size:10px;color:var(--mut);margin-bottom:6px;letter-spacing:.04em}
+.kpi .kv{font-size:24px;font-weight:700;font-family:var(--mono)}
+.kpi .ks{font-size:10px;color:var(--mut);margin-top:3px}
+.cg2{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
+.cg3{display:grid;grid-template-columns:2fr 1fr;gap:14px;margin-bottom:14px}
+.cc{background:var(--sur);border:1px solid var(--bor);border-radius:10px;padding:18px}
+.cc h3{font-size:12px;font-weight:600;margin-bottom:2px}
+.cc p{font-size:10px;color:var(--mut);margin-bottom:14px}
+.dtbl{width:100%;border-collapse:collapse;font-size:12px}
+.dtbl th{text-align:left;padding:8px 10px;font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--bor)}
+.dtbl td{padding:9px 10px;border-bottom:1px solid rgba(48,54,61,.35)}
+.dtbl tr:last-child td{border-bottom:none}
+.dtbl tbody tr{cursor:pointer;transition:background .1s}
+.dtbl tbody tr:hover td{background:rgba(88,166,255,.05)}
+.rc{display:inline-flex;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600;font-family:var(--mono)}
+.rc.hot{background:rgba(63,185,80,.15);color:var(--grn)}
+.rc.mid{background:rgba(88,166,255,.15);color:var(--acc)}
+.rc.cold{background:rgba(247,129,102,.15);color:var(--red)}
+.filters{display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap}
+.fc{padding:4px 12px;border-radius:20px;border:1px solid var(--bor);background:transparent;color:var(--mut);cursor:pointer;font-size:11px;transition:all .12s}
+.fc.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.fc:hover:not(.on){border-color:var(--acc);color:var(--acc)}
+::-webkit-scrollbar{width:4px;height:4px}
+::-webkit-scrollbar-thumb{background:var(--bor);border-radius:2px}
+
+/* 드릴다운 모달 */
+#modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:500;align-items:center;justify-content:center}
+#modal-overlay.open{display:flex}
+#modal-box{background:var(--sur);border:1px solid var(--bor);border-radius:12px;width:min(860px,95vw);max-height:85vh;display:flex;flex-direction:column;overflow:hidden}
+#modal-head{padding:16px 20px;border-bottom:1px solid var(--bor);display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+#modal-head h3{font-size:15px;font-weight:700}
+#modal-head .msub{font-size:11px;color:var(--mut);margin-top:2px}
+#modal-close{background:none;border:none;color:var(--mut);font-size:20px;cursor:pointer;padding:4px 8px;border-radius:4px}
+#modal-close:hover{color:var(--txt);background:var(--sur2)}
+#modal-body{overflow-y:auto;padding:16px 20px}
+#modal-canvas-wrap{margin-bottom:16px}
+.modal-tbl{width:100%;border-collapse:collapse;font-size:12px}
+.modal-tbl th{text-align:left;padding:7px 10px;font-size:10px;font-weight:600;color:var(--mut);letter-spacing:.05em;text-transform:uppercase;border-bottom:1px solid var(--bor)}
+.modal-tbl td{padding:8px 10px;border-bottom:1px solid rgba(48,54,61,.3);font-family:var(--mono);font-size:11px}
+.modal-tbl tr:last-child td{border-bottom:none}
+.modal-tbl tbody tr:hover td{background:rgba(88,166,255,.05)}
+.sort-btn{cursor:pointer;user-select:none}
+.sort-btn:hover{color:var(--acc)}
+</style>
+</head>
+<body>
+<nav>
+  <h1>경기도 광주시 아파트 분양 <span>2020–2025</span></h1>
+  <div class="tabs">
+    <button class="tab-btn on" data-tab="map" onclick="show('map')">🗺 지도 탐색</button>
+    <button class="tab-btn" data-tab="stats" onclick="show('stats')">📊 전체 통계</button>
+  </div>
+</nav>
+
+<div id="v-map" class="view on">
+  <div id="map-wrap">
+    <div id="map-bg"></div>
+    <div id="tile-status" id="tile-status"></div>
+    <div id="tile-layer"></div>
+    <div id="marker-layer"></div>
+    <div id="map-ctrl">
+      <button class="mc-btn" onclick="zoomMap(1)" title="확대">+</button>
+      <button class="mc-btn" onclick="zoomMap(-1)" title="축소">−</button>
+      <button class="mc-btn" onclick="resetMap()" title="초기화" style="font-size:14px">⌂</button>
+    </div>
+    <div id="map-legend">
+      <div class="lt">평균 경쟁률</div>
+      <div class="lr"><div class="ld" style="background:#3fb950"></div>10:1 이상</div>
+      <div class="lr"><div class="ld" style="background:#58a6ff"></div>3~10:1</div>
+      <div class="lr"><div class="ld" style="background:#e3b341"></div>1~3:1</div>
+      <div class="lr"><div class="ld" style="background:#f78166"></div>1:1 미만</div>
+    </div>
+    <div id="zoom-info"></div>
+    <div id="map-attr">© <a href="https://www.openstreetmap.org/copyright" target="_blank">OpenStreetMap</a></div>
+  </div>
+  <div class="panel">
+    <div class="ph">
+      <div class="phl">단지 분양 정보</div>
+      <div class="pht" id="ptitle">단지를 선택하세요</div>
+      <div class="phs" id="psub">지도에서 마커를 클릭하면 상세 정보가 표시됩니다</div>
+    </div>
+    <div class="pb" id="pbody">
+      <div class="hint">
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" opacity=".3">
+          <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0118 0z"/><circle cx="12" cy="10" r="3"/>
+        </svg>
+        지도 마커를 클릭해<br>단지를 선택하세요
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="v-stats" class="view">
+  <div class="sh"><h2>광주시 분양 전체 통계</h2><p>2020–2025년 청약홈 기준 경기도 광주시 아파트 분양 데이터</p></div>
+  <div class="krow">
+    <div class="kpi"><div class="kl">총 분양 단지</div><div class="kv" style="color:var(--acc)">22<span style="font-size:13px;color:var(--mut)">개</span></div><div class="ks">2020.07 ~ 2025.06</div></div>
+    <div class="kpi"><div class="kl">총 공급 세대</div><div class="kv" style="color:var(--grn)">13,453<span style="font-size:13px;color:var(--mut)">세대</span></div><div class="ks">일반+특별공급 합산</div></div>
+    <div class="kpi"><div class="kl">평균 경쟁률</div><div class="kv" style="color:var(--yel)">7.75<span style="font-size:13px;color:var(--mut)">:1</span></div><div class="ks">전 평형 평균</div></div>
+    <div class="kpi"><div class="kl">평균 평당 분양가</div><div class="kv" style="color:var(--pur)">1,640<span style="font-size:13px;color:var(--mut)">만원</span></div><div class="ks">3.3㎡ 기준</div></div>
+    <div class="kpi"><div class="kl">미달 발생 건수</div><div class="kv" style="color:var(--red)">42<span style="font-size:13px;color:var(--mut)">건</span></div><div class="ks">전체 169 평형 중</div></div>
+  </div>
+  <div class="cg2">
+    <div class="cc"><h3>평형구분별 평균 경쟁률</h3><p>전용면적 기준 4개 구간</p><canvas id="c1" height="200"></canvas></div>
+    <div class="cc"><h3>평형구분별 평균 평당 분양가</h3><p>3.3㎡당 분양최고금액 (만원)</p><canvas id="c2" height="200"></canvas></div>
+  </div>
+  <div class="cg2">
+    <div class="cc"><h3>연도별 · 평형별 경쟁률 추이</h3><p>분양 시기별 평형 선호도 변화 (2023년 분양 없음)</p><canvas id="c3" height="220"></canvas></div>
+    <div class="cc"><h3>읍면동별 평균 경쟁률</h3><p>지역별 청약 열기 비교</p><canvas id="c4" height="220"></canvas></div>
+  </div>
+  <div class="cg3">
+    <div class="cc"><h3>읍면동별 상세 현황</h3><p>행 클릭 시 지도 탭으로 이동</p><table class="dtbl" id="dong-tbl"></table></div>
+    <div class="cc"><h3>평형별 공급 비중</h3><p>전체 공급세대 구성비</p><canvas id="c5" height="220"></canvas></div>
+  </div>
+  <div class="cc" style="margin-top:14px">
+    <h3>단지별 전체 목록</h3><p>행 클릭 시 해당 단지 지도로 이동</p>
+    <div class="filters" id="yr-f"></div>
+    <table class="dtbl" id="dangi-tbl"></table>
+  </div>
+</div>
+
+<script>
+const D = {"dangi": [{"name": "곤지암역 센트럴 아이파크", "dong": "곤지암읍", "date": "2024-12-06", "year": 2024, "total_supply": 347, "avg_rate": 0.3, "avg_price": 1856.0, "shortage_total": 256, "lat": 37.3572, "lon": 127.352, "types": [{"ty": "84.9728A", "type": "중소형(60~85㎡)", "supply": 286, "price": 1867, "rate": 0.2587, "shortage": 212}, {"ty": "84.9704B", "type": "중소형(60~85㎡)", "supply": 19, "price": 1830, "rate": 0.4211, "shortage": 11}, {"ty": "110.4198", "type": "대형(102㎡초과)", "supply": 42, "price": 1871, "rate": 0.2143, "shortage": 33}]}, {"name": "곤지암역 제일풍경채", "dong": "곤지암읍", "date": "2024-10-31", "year": 2024, "total_supply": 565, "avg_rate": 1.68, "avg_price": 1812.0, "shortage_total": 201, "lat": 37.358, "lon": 127.3505, "types": [{"ty": "59.8372A", "type": "소형(60㎡이하)", "supply": 152, "price": 1864, "rate": 5.13, "shortage": 0}, {"ty": "84.9050A", "type": "중소형(60~85㎡)", "supply": 242, "price": 1792, "rate": 0.4917, "shortage": 123}, {"ty": "84.9876B", "type": "중소형(60~85㎡)", "supply": 84, "price": 1793, "rate": 1.01, "shortage": 0}, {"ty": "84.9264C", "type": "중소형(60~85㎡)", "supply": 87, "price": 1797, "rate": 0.1034, "shortage": 78}]}, {"name": "광주 더파크 비스타 데시앙", "dong": "역동", "date": "2022-10-21", "year": 2022, "total_supply": 1690, "avg_rate": 4.46, "avg_price": 1767.0, "shortage_total": 189, "lat": 37.448, "lon": 127.241, "types": [{"ty": "59.9607A", "type": "소형(60㎡이하)", "supply": 143, "price": 1753, "rate": 11.64, "shortage": 0}, {"ty": "59.9893B", "type": "소형(60㎡이하)", "supply": 121, "price": 1721, "rate": 6.15, "shortage": 0}, {"ty": "84.9099A", "type": "중소형(60~85㎡)", "supply": 484, "price": 1773, "rate": 8.08, "shortage": 0}, {"ty": "84.9823B", "type": "중소형(60~85㎡)", "supply": 213, "price": 1739, "rate": 4.35, "shortage": 0}, {"ty": "84.9963C", "type": "중소형(60~85㎡)", "supply": 191, "price": 1720, "rate": 3.59, "shortage": 0}, {"ty": "114.9779A", "type": "대형(102㎡초과)", "supply": 253, "price": 1809, "rate": 1.23, "shortage": 0}, {"ty": "114.9822B", "type": "대형(102㎡초과)", "supply": 144, "price": 1810, "rate": 0.4028, "shortage": 86}, {"ty": "114.9165C", "type": "대형(102㎡초과)", "supply": 141, "price": 1808, "rate": 0.2695, "shortage": 103}]}, {"name": "광주 송정 중흥S-클래스 파크뷰", "dong": "송정동", "date": "2022-12-02", "year": 2022, "total_supply": 840, "avg_rate": 0.85, "avg_price": 1701.0, "shortage_total": 216, "lat": 37.427, "lon": 127.243, "types": [{"ty": "59.8670A", "type": "소형(60㎡이하)", "supply": 131, "price": 1730, "rate": 2.52, "shortage": 0}, {"ty": "59.6827B", "type": "소형(60㎡이하)", "supply": 71, "price": 1696, "rate": 0.2676, "shortage": 52}, {"ty": "59.7670C", "type": "소형(60㎡이하)", "supply": 130, "price": 1693, "rate": 0.8077, "shortage": 25}, {"ty": "74.8101A", "type": "중소형(60~85㎡)", "supply": 135, "price": 1696, "rate": 0.6444, "shortage": 48}, {"ty": "84.6234A", "type": "중소형(60~85㎡)", "supply": 212, "price": 1730, "rate": 0.9953, "shortage": 1}, {"ty": "84.6150B", "type": "중소형(60~85㎡)", "supply": 48, "price": 1672, "rate": 0.1667, "shortage": 40}, {"ty": "84.8425C", "type": "중소형(60~85㎡)", "supply": 113, "price": 1687, "rate": 0.5575, "shortage": 50}]}, {"name": "광주 초월역 한라비발디", "dong": "초월읍", "date": "2020-07-17", "year": 2020, "total_supply": 1108, "avg_rate": 4.15, "avg_price": 1275.0, "shortage_total": 0, "lat": 37.3865, "lon": 127.274, "types": [{"ty": "62.6775A", "type": "중소형(60~85㎡)", "supply": 82, "price": 1306, "rate": 3.57, "shortage": 0}, {"ty": "62.9549B", "type": "중소형(60~85㎡)", "supply": 85, "price": 1267, "rate": 1.71, "shortage": 0}, {"ty": "75.3083A", "type": "중소형(60~85㎡)", "supply": 203, "price": 1289, "rate": 5.6, "shortage": 0}, {"ty": "75.7994B", "type": "중소형(60~85㎡)", "supply": 184, "price": 1254, "rate": 2.31, "shortage": 0}, {"ty": "84.9396A", "type": "중소형(60~85㎡)", "supply": 333, "price": 1282, "rate": 8.9, "shortage": 0}, {"ty": "84.8786B", "type": "중소형(60~85㎡)", "supply": 221, "price": 1251, "rate": 2.81, "shortage": 0}]}, {"name": "광주 탄벌 서희스타힐스 1단지", "dong": "탄벌동", "date": "2022-11-02", "year": 2022, "total_supply": 45, "avg_rate": 0.78, "avg_price": 1720.0, "shortage_total": 7, "lat": 37.4265, "lon": 127.258, "types": [{"ty": "59.9557B", "type": "소형(60㎡이하)", "supply": 7, "price": 1692, "rate": 1.0, "shortage": 0}, {"ty": "59.9591C", "type": "소형(60㎡이하)", "supply": 16, "price": 1691, "rate": 0.9375, "shortage": 1}, {"ty": "59.7462D", "type": "소형(60㎡이하)", "supply": 4, "price": 1724, "rate": 0.0, "shortage": 4}, {"ty": "72.9042A", "type": "중소형(60~85㎡)", "supply": 12, "price": 1765, "rate": 1.29, "shortage": 0}, {"ty": "72.9545B", "type": "중소형(60~85㎡)", "supply": 6, "price": 1730, "rate": 0.6667, "shortage": 2}]}, {"name": "광주 탄벌 서희스타힐스 1단지", "dong": "탄벌동", "date": "2024-02-20", "year": 2024, "total_supply": 47, "avg_rate": 0.82, "avg_price": 1785.0, "shortage_total": 5, "lat": 37.4265, "lon": 127.258, "types": [{"ty": "59.9557B", "type": "소형(60㎡이하)", "supply": 9, "price": 1818, "rate": 1.0, "shortage": 0}, {"ty": "59.9591C", "type": "소형(60㎡이하)", "supply": 7, "price": 1782, "rate": 1.0, "shortage": 0}, {"ty": "59.7462D", "type": "소형(60㎡이하)", "supply": 4, "price": 1714, "rate": 0.5, "shortage": 2}, {"ty": "72.9042A", "type": "중소형(60~85㎡)", "supply": 21, "price": 1824, "rate": 0.9524, "shortage": 1}, {"ty": "72.9545B", "type": "중소형(60~85㎡)", "supply": 6, "price": 1788, "rate": 0.6667, "shortage": 2}]}, {"name": "광주 탄벌 서희스타힐스 1단지", "dong": "탄벌동", "date": "2025-06-26", "year": 2025, "total_supply": 32, "avg_rate": 0.49, "avg_price": 1973.0, "shortage_total": 27, "lat": 37.4265, "lon": 127.258, "types": [{"ty": "59.9557B", "type": "소형(60㎡이하)", "supply": 2, "price": 1978, "rate": 2.0, "shortage": 0}, {"ty": "59.9591C", "type": "소형(60㎡이하)", "supply": 9, "price": 1939, "rate": 0.0, "shortage": 9}, {"ty": "59.7462D", "type": "소형(60㎡이하)", "supply": 6, "price": 1978, "rate": 0.0, "shortage": 6}, {"ty": "72.9042A", "type": "중소형(60~85㎡)", "supply": 9, "price": 2025, "rate": 0.1111, "shortage": 8}, {"ty": "72.9545B", "type": "중소형(60~85㎡)", "supply": 6, "price": 1946, "rate": 0.3333, "shortage": 4}]}, {"name": "광주 탄벌 서희스타힐스 2단지", "dong": "탄벌동", "date": "2022-11-02", "year": 2022, "total_supply": 41, "avg_rate": 0.56, "avg_price": 1734.0, "shortage_total": 16, "lat": 37.428, "lon": 127.2595, "types": [{"ty": "59.9681A", "type": "소형(60㎡이하)", "supply": 15, "price": 1757, "rate": 0.6667, "shortage": 5}, {"ty": "59.9807C", "type": "소형(60㎡이하)", "supply": 16, "price": 1722, "rate": 0.8125, "shortage": 3}, {"ty": "59.9553E", "type": "소형(60㎡이하)", "supply": 10, "price": 1722, "rate": 0.2, "shortage": 8}]}, {"name": "광주 탄벌 서희스타힐스 2단지", "dong": "탄벌동", "date": "2024-02-20", "year": 2024, "total_supply": 29, "avg_rate": 0.56, "avg_price": 1796.0, "shortage_total": 8, "lat": 37.428, "lon": 127.2595, "types": [{"ty": "59.9681A", "type": "소형(60㎡이하)", "supply": 13, "price": 1832, "rate": 0.9231, "shortage": 1}, {"ty": "59.9807C", "type": "소형(60㎡이하)", "supply": 12, "price": 1796, "rate": 0.75, "shortage": 3}, {"ty": "59.9553E", "type": "소형(60㎡이하)", "supply": 4, "price": 1761, "rate": 0.0, "shortage": 4}]}, {"name": "광주 탄벌 서희스타힐스 2단지", "dong": "탄벌동", "date": "2025-06-26", "year": 2025, "total_supply": 34, "avg_rate": 0.02, "avg_price": 2007.0, "shortage_total": 33, "lat": 37.428, "lon": 127.2595, "types": [{"ty": "59.9681A", "type": "소형(60㎡이하)", "supply": 9, "price": 2034, "rate": 0.0, "shortage": 9}, {"ty": "59.9807C", "type": "소형(60㎡이하)", "supply": 18, "price": 1995, "rate": 0.0556, "shortage": 17}, {"ty": "59.9553E", "type": "소형(60㎡이하)", "supply": 7, "price": 1993, "rate": 0.0, "shortage": 7}]}, {"name": "광주 행정타운 아이파크", "dong": "송정동", "date": "2021-11-08", "year": 2021, "total_supply": 828, "avg_rate": 6.07, "avg_price": 1602.0, "shortage_total": 0, "lat": 37.4328, "lon": 127.251, "types": [{"ty": "84.9939A", "type": "중소형(60~85㎡)", "supply": 516, "price": 1614, "rate": 5.8, "shortage": 0}, {"ty": "84.9927B", "type": "중소형(60~85㎡)", "supply": 48, "price": 1616, "rate": 5.23, "shortage": 0}, {"ty": "84.9091C", "type": "중소형(60~85㎡)", "supply": 111, "price": 1518, "rate": 4.8, "shortage": 0}, {"ty": "84.9939D", "type": "중소형(60~85㎡)", "supply": 69, "price": 1614, "rate": 6.52, "shortage": 0}, {"ty": "99.5304", "type": "중형(85~102㎡)", "supply": 84, "price": 1646, "rate": 8.01, "shortage": 0}]}, {"name": "광주탄벌 서희스타힐스1단지", "dong": "탄벌동", "date": "2021-12-31", "year": 2021, "total_supply": 90, "avg_rate": 8.04, "avg_price": 1638.0, "shortage_total": 0, "lat": 37.4265, "lon": 127.258, "types": [{"ty": "59.9557B", "type": "소형(60㎡이하)", "supply": 8, "price": 1655, "rate": 4.8, "shortage": 0}, {"ty": "59.9591C", "type": "소형(60㎡이하)", "supply": 25, "price": 1622, "rate": 3.18, "shortage": 0}, {"ty": "59.7462D", "type": "소형(60㎡이하)", "supply": 20, "price": 1622, "rate": 1.82, "shortage": 0}, {"ty": "72.9042A", "type": "중소형(60~85㎡)", "supply": 28, "price": 1661, "rate": 18.6, "shortage": 0}, {"ty": "72.9545B", "type": "중소형(60~85㎡)", "supply": 9, "price": 1628, "rate": 11.8, "shortage": 0}]}, {"name": "광주탄벌 서희스타힐스2단지", "dong": "탄벌동", "date": "2021-12-31", "year": 2021, "total_supply": 82, "avg_rate": 2.37, "avg_price": 1633.0, "shortage_total": 0, "lat": 37.428, "lon": 127.2595, "types": [{"ty": "59.9681A", "type": "소형(60㎡이하)", "supply": 27, "price": 1655, "rate": 2.27, "shortage": 0}, {"ty": "59.9807C", "type": "소형(60㎡이하)", "supply": 30, "price": 1622, "rate": 2.92, "shortage": 0}, {"ty": "59.9553E", "type": "소형(60㎡이하)", "supply": 25, "price": 1623, "rate": 1.92, "shortage": 0}]}, {"name": "광주태전 경남아너스빌 리미티드", "dong": "장지동", "date": "2024-08-29", "year": 2024, "total_supply": 404, "avg_rate": 1.26, "avg_price": 1893.0, "shortage_total": 74, "lat": 37.4195, "lon": 127.264, "types": [{"ty": "84.9969A", "type": "중소형(60~85㎡)", "supply": 200, "price": 1897, "rate": 1.88, "shortage": 0}, {"ty": "84.9825B", "type": "중소형(60~85㎡)", "supply": 204, "price": 1889, "rate": 0.6373, "shortage": 74}]}, {"name": "더샵 오포센트리체", "dong": "오포읍", "date": "2021-02-08", "year": 2021, "total_supply": 1475, "avg_rate": 5.9, "avg_price": 1396.0, "shortage_total": 0, "lat": 37.459, "lon": 127.1865, "types": [{"ty": "59.9600A", "type": "소형(60㎡이하)", "supply": 184, "price": 1449, "rate": 3.85, "shortage": 0}, {"ty": "59.9800B", "type": "소형(60㎡이하)", "supply": 48, "price": 1449, "rate": 3.33, "shortage": 0}, {"ty": "59.9700C", "type": "소형(60㎡이하)", "supply": 192, "price": 1393, "rate": 3.41, "shortage": 0}, {"ty": "76.9900A", "type": "중소형(60~85㎡)", "supply": 145, "price": 1407, "rate": 5.03, "shortage": 0}, {"ty": "76.9900B", "type": "중소형(60~85㎡)", "supply": 180, "price": 1351, "rate": 4.55, "shortage": 0}, {"ty": "84.9600A", "type": "중소형(60~85㎡)", "supply": 207, "price": 1393, "rate": 8.6, "shortage": 0}, {"ty": "84.9800B", "type": "중소형(60~85㎡)", "supply": 164, "price": 1393, "rate": 10.82, "shortage": 0}, {"ty": "84.9800C", "type": "중소형(60~85㎡)", "supply": 134, "price": 1393, "rate": 6.48, "shortage": 0}, {"ty": "84.9800D", "type": "중소형(60~85㎡)", "supply": 221, "price": 1337, "rate": 7.01, "shortage": 0}]}, {"name": "두산위브 광주센트럴파크", "dong": "탄벌동", "date": "2022-02-03", "year": 2022, "total_supply": 653, "avg_rate": 2.76, "avg_price": 1589.0, "shortage_total": 0, "lat": 37.431, "lon": 127.254, "types": [{"ty": "59.7334", "type": "소형(60㎡이하)", "supply": 271, "price": 1605, "rate": 2.42, "shortage": 0}, {"ty": "84.4041A", "type": "중소형(60~85㎡)", "supply": 258, "price": 1618, "rate": 3.94, "shortage": 0}, {"ty": "84.2146B", "type": "중소형(60~85㎡)", "supply": 124, "price": 1544, "rate": 1.93, "shortage": 0}]}, {"name": "쌍용 더 플래티넘 광주", "dong": "초월읍", "date": "2020-07-03", "year": 2020, "total_supply": 147, "avg_rate": 1.63, "avg_price": 1410.0, "shortage_total": 12, "lat": 37.382, "lon": 127.281, "types": [{"ty": "59.9739A", "type": "소형(60㎡이하)", "supply": 7, "price": 1544, "rate": 1.25, "shortage": 0}, {"ty": "59.8004B", "type": "소형(60㎡이하)", "supply": 11, "price": 1530, "rate": 0.7273, "shortage": 3}, {"ty": "73.5338A", "type": "중소형(60~85㎡)", "supply": 23, "price": 1412, "rate": 1.21, "shortage": 0}, {"ty": "73.8508B", "type": "중소형(60~85㎡)", "supply": 39, "price": 1397, "rate": 1.08, "shortage": 0}, {"ty": "84.9908A", "type": "중소형(60~85㎡)", "supply": 32, "price": 1418, "rate": 3.32, "shortage": 0}, {"ty": "84.4933B", "type": "중소형(60~85㎡)", "supply": 18, "price": 1404, "rate": 0.5, "shortage": 9}, {"ty": "84.0908C", "type": "중소형(60~85㎡)", "supply": 12, "price": 1306, "rate": 1.71, "shortage": 0}, {"ty": "97.0861A", "type": "중형(85~102㎡)", "supply": 5, "price": 1266, "rate": 3.25, "shortage": 0}]}, {"name": "쌍용 더 플래티넘 광주", "dong": "초월읍", "date": "2021-11-23", "year": 2021, "total_supply": 60, "avg_rate": 14.75, "avg_price": 1460.0, "shortage_total": 0, "lat": 37.382, "lon": 127.281, "types": [{"ty": "59.9739A", "type": "소형(60㎡이하)", "supply": 3, "price": 1491, "rate": 16.0, "shortage": 0}, {"ty": "59.8004B", "type": "소형(60㎡이하)", "supply": 2, "price": 1438, "rate": 10.5, "shortage": 0}, {"ty": "73.5338A", "type": "중소형(60~85㎡)", "supply": 20, "price": 1470, "rate": 10.78, "shortage": 0}, {"ty": "73.8508B", "type": "중소형(60~85㎡)", "supply": 4, "price": 1441, "rate": 8.33, "shortage": 0}, {"ty": "84.9908A", "type": "중소형(60~85㎡)", "supply": 24, "price": 1470, "rate": 24.9, "shortage": 0}, {"ty": "84.4933B", "type": "중소형(60~85㎡)", "supply": 7, "price": 1447, "rate": 18.0, "shortage": 0}]}, {"name": "오포자이 디 오브 C-3BL", "dong": "오포읍", "date": "2021-05-20", "year": 2021, "total_supply": 447, "avg_rate": 15.86, "avg_price": 1435.0, "shortage_total": 0, "lat": 37.454, "lon": 127.189, "types": [{"ty": "62.9797A", "type": "중소형(60~85㎡)", "supply": 32, "price": 1462, "rate": 15.33, "shortage": 0}, {"ty": "69.8197A", "type": "중소형(60~85㎡)", "supply": 9, "price": 1304, "rate": 10.5, "shortage": 0}, {"ty": "74.9676A", "type": "중소형(60~85㎡)", "supply": 80, "price": 1463, "rate": 10.51, "shortage": 0}, {"ty": "74.9499C", "type": "중소형(60~85㎡)", "supply": 72, "price": 1405, "rate": 7.57, "shortage": 0}, {"ty": "82.1499C", "type": "중소형(60~85㎡)", "supply": 9, "price": 1266, "rate": 8.75, "shortage": 0}, {"ty": "84.9959A", "type": "중소형(60~85㎡)", "supply": 82, "price": 1434, "rate": 23.16, "shortage": 0}, {"ty": "84.9959B", "type": "중소형(60~85㎡)", "supply": 52, "price": 1406, "rate": 11.32, "shortage": 0}, {"ty": "84.9525C", "type": "중소형(60~85㎡)", "supply": 40, "price": 1378, "rate": 9.67, "shortage": 0}, {"ty": "84.9658D", "type": "중소형(60~85㎡)", "supply": 27, "price": 1434, "rate": 10.62, "shortage": 0}, {"ty": "84.8537E", "type": "중소형(60~85㎡)", "supply": 26, "price": 1414, "rate": 8.0, "shortage": 0}, {"ty": "92.0000T", "type": "중형(85~102㎡)", "supply": 13, "price": 1297, "rate": 48.5, "shortage": 0}, {"ty": "104.0000P", "type": "대형(102㎡초과)", "supply": 5, "price": 1957, "rate": 26.4, "shortage": 0}]}, {"name": "오포자이 디 오브 C-4BL", "dong": "오포읍", "date": "2021-05-20", "year": 2021, "total_supply": 448, "avg_rate": 13.87, "avg_price": 1435.0, "shortage_total": 0, "lat": 37.4555, "lon": 127.191, "types": [{"ty": "62.9797A", "type": "중소형(60~85㎡)", "supply": 29, "price": 1443, "rate": 15.79, "shortage": 0}, {"ty": "62.9691B", "type": "중소형(60~85㎡)", "supply": 13, "price": 1414, "rate": 11.75, "shortage": 0}, {"ty": "69.0000T", "type": "중소형(60~85㎡)", "supply": 9, "price": 1306, "rate": 8.17, "shortage": 0}, {"ty": "74.9676A", "type": "중소형(60~85㎡)", "supply": 45, "price": 1443, "rate": 10.5, "shortage": 0}, {"ty": "74.9676B", "type": "중소형(60~85㎡)", "supply": 34, "price": 1436, "rate": 9.44, "shortage": 0}, {"ty": "74.9499C", "type": "중소형(60~85㎡)", "supply": 20, "price": 1407, "rate": 8.27, "shortage": 0}, {"ty": "74.9678D", "type": "중소형(60~85㎡)", "supply": 10, "price": 1444, "rate": 8.2, "shortage": 0}, {"ty": "74.7276E", "type": "중소형(60~85㎡)", "supply": 8, "price": 1422, "rate": 8.5, "shortage": 0}, {"ty": "82.0000T", "type": "중소형(60~85㎡)", "supply": 12, "price": 1319, "rate": 9.0, "shortage": 0}, {"ty": "84.9959A", "type": "중소형(60~85㎡)", "supply": 87, "price": 1436, "rate": 25.0, "shortage": 0}, {"ty": "84.9959B", "type": "중소형(60~85㎡)", "supply": 31, "price": 1407, "rate": 11.63, "shortage": 0}, {"ty": "84.9525C", "type": "중소형(60~85㎡)", "supply": 33, "price": 1379, "rate": 10.35, "shortage": 0}, {"ty": "84.9658D", "type": "중소형(60~85㎡)", "supply": 45, "price": 1436, "rate": 11.14, "shortage": 0}, {"ty": "84.8537E", "type": "중소형(60~85㎡)", "supply": 46, "price": 1415, "rate": 6.61, "shortage": 0}, {"ty": "92.0000T", "type": "중형(85~102㎡)", "supply": 20, "price": 1298, "rate": 45.0, "shortage": 0}, {"ty": "104.0000P", "type": "대형(102㎡초과)", "supply": 6, "price": 1961, "rate": 22.5, "shortage": 0}]}, {"name": "오포자이 오브제 C-1BL", "dong": "오포읍", "date": "2021-10-15", "year": 2021, "total_supply": 927, "avg_rate": 10.88, "avg_price": 1520.0, "shortage_total": 0, "lat": 37.451, "lon": 127.192, "types": [{"ty": "62.9691B", "type": "중소형(60~85㎡)", "supply": 148, "price": 1463, "rate": 4.62, "shortage": 0}, {"ty": "74.9676A", "type": "중소형(60~85㎡)", "supply": 160, "price": 1490, "rate": 5.56, "shortage": 0}, {"ty": "74.9676B", "type": "중소형(60~85㎡)", "supply": 24, "price": 1463, "rate": 3.87, "shortage": 0}, {"ty": "74.9678D", "type": "중소형(60~85㎡)", "supply": 93, "price": 1490, "rate": 2.96, "shortage": 0}, {"ty": "74.7276E", "type": "중소형(60~85㎡)", "supply": 94, "price": 1490, "rate": 3.2, "shortage": 0}, {"ty": "84.9959A", "type": "중소형(60~85㎡)", "supply": 133, "price": 1463, "rate": 17.19, "shortage": 0}, {"ty": "84.9959B", "type": "중소형(60~85㎡)", "supply": 66, "price": 1435, "rate": 8.6, "shortage": 0}, {"ty": "84.9658D", "type": "중소형(60~85㎡)", "supply": 103, "price": 1463, "rate": 7.43, "shortage": 0}, {"ty": "84.8537E", "type": "중소형(60~85㎡)", "supply": 104, "price": 1463, "rate": 6.33, "shortage": 0}, {"ty": "104.9454A", "type": "대형(102㎡초과)", "supply": 2, "price": 1982, "rate": 49.0, "shortage": 0}]}, {"name": "해링턴 스퀘어 리버파크", "dong": "역동", "date": "2025-06-20", "year": 2025, "total_supply": 817, "avg_rate": 2.09, "avg_price": 2320.0, "shortage_total": 199, "lat": 37.439, "lon": 127.2368, "types": [{"ty": "59.9844A", "type": "소형(60㎡이하)", "supply": 72, "price": 2335, "rate": 9.11, "shortage": 0}, {"ty": "59.8224B", "type": "소형(60㎡이하)", "supply": 144, "price": 2311, "rate": 4.27, "shortage": 0}, {"ty": "84.9935A", "type": "중소형(60~85㎡)", "supply": 64, "price": 2201, "rate": 1.49, "shortage": 0}, {"ty": "84.9912B", "type": "중소형(60~85㎡)", "supply": 133, "price": 2223, "rate": 0.7895, "shortage": 28}, {"ty": "84.9223C", "type": "중소형(60~85㎡)", "supply": 134, "price": 2201, "rate": 0.9254, "shortage": 10}, {"ty": "84.9871D", "type": "중소형(60~85㎡)", "supply": 138, "price": 2168, "rate": 0.2029, "shortage": 110}, {"ty": "96.9959A", "type": "중형(85~102㎡)", "supply": 62, "price": 2179, "rate": 1.39, "shortage": 0}, {"ty": "96.9463B", "type": "중형(85~102㎡)", "supply": 64, "price": 2179, "rate": 0.2031, "shortage": 51}, {"ty": "150.9956", "type": "대형(102㎡초과)", "supply": 4, "price": 2700, "rate": 1.5, "shortage": 0}, {"ty": "161.8506", "type": "대형(102㎡초과)", "supply": 2, "price": 2700, "rate": 1.0, "shortage": 0}]}, {"name": "힐스테이트 광주곤지암역", "dong": "곤지암읍", "date": "2024-08-02", "year": 2024, "total_supply": 635, "avg_rate": 0.88, "avg_price": 2157.0, "shortage_total": 94, "lat": 37.362, "lon": 127.348, "types": [{"ty": "84.8237A", "type": "중소형(60~85㎡)", "supply": 448, "price": 1809, "rate": 0.9821, "shortage": 8}, {"ty": "84.9544B", "type": "중소형(60~85㎡)", "supply": 179, "price": 1776, "rate": 0.5251, "shortage": 85}, {"ty": "139.6980A", "type": "대형(102㎡초과)", "supply": 4, "price": 2524, "rate": 1.25, "shortage": 0}, {"ty": "139.7239B", "type": "대형(102㎡초과)", "supply": 4, "price": 2518, "rate": 0.75, "shortage": 1}]}, {"name": "힐스테이트 삼동역", "dong": "삼동", "date": "2020-09-04", "year": 2020, "total_supply": 565, "avg_rate": 8.03, "avg_price": 1450.0, "shortage_total": 0, "lat": 37.396, "lon": 127.2283, "types": [{"ty": "63.8510A", "type": "중소형(60~85㎡)", "supply": 79, "price": 1514, "rate": 3.89, "shortage": 0}, {"ty": "63.9980B", "type": "중소형(60~85㎡)", "supply": 112, "price": 1437, "rate": 4.64, "shortage": 0}, {"ty": "75.6170A", "type": "중소형(60~85㎡)", "supply": 261, "price": 1399, "rate": 6.61, "shortage": 0}, {"ty": "75.9380B", "type": "중소형(60~85㎡)", "supply": 51, "price": 1441, "rate": 6.74, "shortage": 0}, {"ty": "84.5140", "type": "중소형(60~85㎡)", "supply": 62, "price": 1458, "rate": 18.26, "shortage": 0}]}, {"name": "힐스테이트 초월역 1BL", "dong": "초월읍", "date": "2021-12-17", "year": 2021, "total_supply": 591, "avg_rate": 20.61, "avg_price": 1579.0, "shortage_total": 0, "lat": 37.3876, "lon": 127.2758, "types": [{"ty": "59.9515A", "type": "소형(60㎡이하)", "supply": 73, "price": 1550, "rate": 25.11, "shortage": 0}, {"ty": "59.7725B", "type": "소형(60㎡이하)", "supply": 16, "price": 1519, "rate": 19.86, "shortage": 0}, {"ty": "74.9803A", "type": "중소형(60~85㎡)", "supply": 71, "price": 1582, "rate": 23.31, "shortage": 0}, {"ty": "74.9743B", "type": "중소형(60~85㎡)", "supply": 16, "price": 1551, "rate": 15.83, "shortage": 0}, {"ty": "74.8250C", "type": "중소형(60~85㎡)", "supply": 16, "price": 1582, "rate": 20.71, "shortage": 0}, {"ty": "74.8867D", "type": "중소형(60~85㎡)", "supply": 17, "price": 1582, "rate": 10.14, "shortage": 0}, {"ty": "74.7999E", "type": "중소형(60~85㎡)", "supply": 27, "price": 1582, "rate": 14.58, "shortage": 0}, {"ty": "74.8118F", "type": "중소형(60~85㎡)", "supply": 53, "price": 1582, "rate": 18.28, "shortage": 0}, {"ty": "84.9436A", "type": "중소형(60~85㎡)", "supply": 266, "price": 1615, "rate": 29.44, "shortage": 0}, {"ty": "84.9636C", "type": "중소형(60~85㎡)", "supply": 18, "price": 1614, "rate": 27.0, "shortage": 0}, {"ty": "84.9436D", "type": "중소형(60~85㎡)", "supply": 18, "price": 1615, "rate": 22.5, "shortage": 0}]}, {"name": "힐스테이트 초월역 2BL", "dong": "초월읍", "date": "2021-12-17", "year": 2021, "total_supply": 506, "avg_rate": 20.78, "avg_price": 1578.0, "shortage_total": 0, "lat": 37.3891, "lon": 127.2782, "types": [{"ty": "64.8587A", "type": "중소형(60~85㎡)", "supply": 65, "price": 1550, "rate": 18.06, "shortage": 0}, {"ty": "64.9890B", "type": "중소형(60~85㎡)", "supply": 15, "price": 1519, "rate": 20.5, "shortage": 0}, {"ty": "74.8867D", "type": "중소형(60~85㎡)", "supply": 17, "price": 1582, "rate": 17.5, "shortage": 0}, {"ty": "74.7999E", "type": "중소형(60~85㎡)", "supply": 17, "price": 1582, "rate": 18.38, "shortage": 0}, {"ty": "74.8118F", "type": "중소형(60~85㎡)", "supply": 30, "price": 1582, "rate": 19.21, "shortage": 0}, {"ty": "84.9436A", "type": "중소형(60~85㎡)", "supply": 282, "price": 1615, "rate": 17.59, "shortage": 0}, {"ty": "84.9893B", "type": "중소형(60~85㎡)", "supply": 50, "price": 1582, "rate": 19.65, "shortage": 0}, {"ty": "101.8979", "type": "중형(85~102㎡)", "supply": 30, "price": 1614, "rate": 35.35, "shortage": 0}]}], "dong": {"곤지암읍": {"단지수": 3, "총공급": 1547, "avg_rate": 1.01, "avg_price": 1949.18, "미달건수": 8, "lat": 37.3607, "lon": 127.3513}, "삼동": {"단지수": 1, "총공급": 565, "avg_rate": 8.03, "avg_price": 1449.8, "미달건수": 0, "lat": 37.3975, "lon": 127.2311}, "송정동": {"단지수": 2, "총공급": 1668, "avg_rate": 3.03, "avg_price": 1659.33, "미달건수": 6, "lat": 37.4301, "lon": 127.2481}, "역동": {"단지수": 2, "총공급": 2507, "avg_rate": 3.14, "avg_price": 2073.89, "미달건수": 6, "lat": 37.4418, "lon": 127.2397}, "오포읍": {"단지수": 4, "총공급": 3297, "avg_rate": 12.21, "avg_price": 1445.81, "미달건수": 0, "lat": 37.4521, "lon": 127.1978}, "장지동": {"단지수": 1, "총공급": 404, "avg_rate": 1.26, "avg_price": 1893.0, "미달건수": 1, "lat": 37.4189, "lon": 127.2628}, "초월읍": {"단지수": 4, "총공급": 2412, "avg_rate": 13.32, "avg_price": 1479.05, "미달건수": 2, "lat": 37.3889, "lon": 127.2855}, "탄벌동": {"단지수": 5, "총공급": 1053, "avg_rate": 1.98, "avg_price": 1767.46, "미달건수": 19, "lat": 37.4295, "lon": 127.2553}}, "pyeong": [{"label": "소형", "rate": 3.65, "price": 1733.29, "supply": 2074}, {"label": "중소형", "rate": 8.35, "price": 1553.19, "supply": 10494}, {"label": "중형", "rate": 20.24, "price": 1639.86, "supply": 278}, {"label": "대형", "rate": 9.5, "price": 2149.09, "supply": 607}], "yr_py": [[2020, "소형", 0.99], [2020, "중소형", 4.55], [2020, "중형", 3.25], [2021, "대형", 32.63], [2021, "소형", 7.61], [2021, "중소형", 12.3], [2021, "중형", 34.22], [2022, "대형", 0.63], [2022, "소형", 2.29], [2022, "중소형", 2.38], [2024, "대형", 0.74], [2024, "소형", 1.33], [2024, "중소형", 0.72], [2025, "대형", 1.25], [2025, "소형", 1.93], [2025, "중소형", 0.64], [2025, "중형", 0.8]]};
+const DD = {"pyeong_detail": {"대형(102㎡초과)": [{"ty": "104.9454A", "pyeong": "대형", "total_supply": 2, "total_req": 98, "rate": 49.0, "price": 1982, "shortage": 0, "names": ["오포자이 오브제 C-1BL"], "count": 1}, {"ty": "104.0000P", "pyeong": "대형", "total_supply": 11, "total_req": 267, "rate": 24.2727, "price": 1959, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "150.9956", "pyeong": "대형", "total_supply": 4, "total_req": 6, "rate": 1.5, "price": 2700, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "139.6980A", "pyeong": "대형", "total_supply": 4, "total_req": 5, "rate": 1.25, "price": 2524, "shortage": 0, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "114.9779A", "pyeong": "대형", "total_supply": 253, "total_req": 311, "rate": 1.2292, "price": 1809, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "161.8506", "pyeong": "대형", "total_supply": 2, "total_req": 2, "rate": 1.0, "price": 2700, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "139.7239B", "pyeong": "대형", "total_supply": 4, "total_req": 3, "rate": 0.75, "price": 2518, "shortage": 1, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "114.9822B", "pyeong": "대형", "total_supply": 144, "total_req": 58, "rate": 0.4028, "price": 1810, "shortage": 86, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "114.9165C", "pyeong": "대형", "total_supply": 141, "total_req": 38, "rate": 0.2695, "price": 1808, "shortage": 103, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "110.4198", "pyeong": "대형", "total_supply": 42, "total_req": 9, "rate": 0.2143, "price": 1871, "shortage": 33, "names": ["곤지암역 센트럴 아이파크"], "count": 1}], "소형(60㎡이하)": [{"ty": "59.9515A", "pyeong": "소형", "total_supply": 73, "total_req": 1833, "rate": 25.1096, "price": 1550, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "59.7725B", "pyeong": "소형", "total_supply": 16, "total_req": 318, "rate": 19.875, "price": 1519, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "59.9607A", "pyeong": "소형", "total_supply": 143, "total_req": 1665, "rate": 11.6434, "price": 1753, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "59.9844A", "pyeong": "소형", "total_supply": 72, "total_req": 656, "rate": 9.1111, "price": 2335, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "59.9893B", "pyeong": "소형", "total_supply": 121, "total_req": 744, "rate": 6.1488, "price": 1721, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "59.9739A", "pyeong": "소형", "total_supply": 10, "total_req": 57, "rate": 5.7, "price": 1528, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "59.8372A", "pyeong": "소형", "total_supply": 152, "total_req": 780, "rate": 5.1316, "price": 1864, "shortage": 0, "names": ["곤지암역 제일풍경채"], "count": 1}, {"ty": "59.8224B", "pyeong": "소형", "total_supply": 144, "total_req": 615, "rate": 4.2708, "price": 2311, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "59.9600A", "pyeong": "소형", "total_supply": 184, "total_req": 708, "rate": 3.8478, "price": 1449, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "59.9700C", "pyeong": "소형", "total_supply": 192, "total_req": 655, "rate": 3.4115, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "59.9800B", "pyeong": "소형", "total_supply": 48, "total_req": 160, "rate": 3.3333, "price": 1449, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "59.8670A", "pyeong": "소형", "total_supply": 131, "total_req": 330, "rate": 2.5191, "price": 1730, "shortage": 0, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "59.7334", "pyeong": "소형", "total_supply": 271, "total_req": 656, "rate": 2.4207, "price": 1605, "shortage": 0, "names": ["두산위브 광주센트럴파크"], "count": 1}, {"ty": "59.8004B", "pyeong": "소형", "total_supply": 13, "total_req": 29, "rate": 2.2308, "price": 1516, "shortage": 3, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "59.9557B", "pyeong": "소형", "total_supply": 26, "total_req": 58, "rate": 2.2308, "price": 1746, "shortage": 0, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "59.9591C", "pyeong": "소형", "total_supply": 57, "total_req": 102, "rate": 1.7895, "price": 1711, "shortage": 10, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "59.9807C", "pyeong": "소형", "total_supply": 76, "total_req": 111, "rate": 1.4605, "price": 1759, "shortage": 23, "names": ["광주 탄벌 서희스타힐스 2단지", "광주탄벌 서희스타힐스2단지"], "count": 4}, {"ty": "59.9681A", "pyeong": "소형", "total_supply": 64, "total_req": 83, "rate": 1.2969, "price": 1768, "shortage": 15, "names": ["광주 탄벌 서희스타힐스 2단지", "광주탄벌 서희스타힐스2단지"], "count": 4}, {"ty": "59.7462D", "pyeong": "소형", "total_supply": 34, "total_req": 38, "rate": 1.1176, "price": 1708, "shortage": 12, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "59.9553E", "pyeong": "소형", "total_supply": 46, "total_req": 50, "rate": 1.087, "price": 1713, "shortage": 19, "names": ["광주 탄벌 서희스타힐스 2단지", "광주탄벌 서희스타힐스2단지"], "count": 4}, {"ty": "59.7670C", "pyeong": "소형", "total_supply": 130, "total_req": 105, "rate": 0.8077, "price": 1693, "shortage": 25, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "59.6827B", "pyeong": "소형", "total_supply": 71, "total_req": 19, "rate": 0.2676, "price": 1696, "shortage": 52, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}], "중소형(60~85㎡)": [{"ty": "84.9636C", "pyeong": "중소형", "total_supply": 18, "total_req": 486, "rate": 27.0, "price": 1614, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "84.9436A", "pyeong": "중소형", "total_supply": 548, "total_req": 12791, "rate": 23.3412, "price": 1615, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "74.9803A", "pyeong": "중소형", "total_supply": 71, "total_req": 1655, "rate": 23.3099, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "84.9436D", "pyeong": "중소형", "total_supply": 18, "total_req": 405, "rate": 22.5, "price": 1615, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "84.9959A", "pyeong": "중소형", "total_supply": 302, "total_req": 6360, "rate": 21.0596, "price": 1447, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "74.8250C", "pyeong": "중소형", "total_supply": 16, "total_req": 331, "rate": 20.6875, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "64.9890B", "pyeong": "중소형", "total_supply": 15, "total_req": 308, "rate": 20.5333, "price": 1519, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "84.9893B", "pyeong": "중소형", "total_supply": 50, "total_req": 982, "rate": 19.64, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "74.8118F", "pyeong": "중소형", "total_supply": 83, "total_req": 1545, "rate": 18.6145, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "84.5140", "pyeong": "중소형", "total_supply": 62, "total_req": 1132, "rate": 18.2581, "price": 1458, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "64.8587A", "pyeong": "중소형", "total_supply": 65, "total_req": 1174, "rate": 18.0615, "price": 1550, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "74.7999E", "pyeong": "중소형", "total_supply": 44, "total_req": 706, "rate": 16.0455, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "74.9743B", "pyeong": "중소형", "total_supply": 16, "total_req": 253, "rate": 15.8125, "price": 1551, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "62.9797A", "pyeong": "중소형", "total_supply": 61, "total_req": 949, "rate": 15.5574, "price": 1453, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "74.8867D", "pyeong": "중소형", "total_supply": 34, "total_req": 470, "rate": 13.8235, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "84.9908A", "pyeong": "중소형", "total_supply": 56, "total_req": 704, "rate": 12.5714, "price": 1440, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "84.9800B", "pyeong": "중소형", "total_supply": 164, "total_req": 1774, "rate": 10.8171, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "69.8197A", "pyeong": "중소형", "total_supply": 9, "total_req": 94, "rate": 10.4444, "price": 1304, "shortage": 0, "names": ["오포자이 디 오브 C-3BL"], "count": 1}, {"ty": "84.9959B", "pyeong": "중소형", "total_supply": 149, "total_req": 1518, "rate": 10.1879, "price": 1419, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "84.9525C", "pyeong": "중소형", "total_supply": 73, "total_req": 729, "rate": 9.9863, "price": 1378, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "82.0000T", "pyeong": "중소형", "total_supply": 12, "total_req": 108, "rate": 9.0, "price": 1319, "shortage": 0, "names": ["오포자이 디 오브 C-4BL"], "count": 1}, {"ty": "84.9396A", "pyeong": "중소형", "total_supply": 333, "total_req": 2964, "rate": 8.9009, "price": 1282, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "84.9658D", "pyeong": "중소형", "total_supply": 175, "total_req": 1553, "rate": 8.8743, "price": 1452, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "82.1499C", "pyeong": "중소형", "total_supply": 9, "total_req": 79, "rate": 8.7778, "price": 1266, "shortage": 0, "names": ["오포자이 디 오브 C-3BL"], "count": 1}, {"ty": "84.9600A", "pyeong": "중소형", "total_supply": 207, "total_req": 1780, "rate": 8.599, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "69.0000T", "pyeong": "중소형", "total_supply": 9, "total_req": 74, "rate": 8.2222, "price": 1306, "shortage": 0, "names": ["오포자이 디 오브 C-4BL"], "count": 1}, {"ty": "84.9099A", "pyeong": "중소형", "total_supply": 484, "total_req": 3911, "rate": 8.0806, "price": 1773, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "72.9042A", "pyeong": "중소형", "total_supply": 70, "total_req": 557, "rate": 7.9571, "price": 1775, "shortage": 9, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "74.9676A", "pyeong": "중소형", "total_supply": 285, "total_req": 2203, "rate": 7.7298, "price": 1475, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "74.9499C", "pyeong": "중소형", "total_supply": 92, "total_req": 710, "rate": 7.7174, "price": 1405, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "74.9676B", "pyeong": "중소형", "total_supply": 58, "total_req": 414, "rate": 7.1379, "price": 1447, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "84.9800D", "pyeong": "중소형", "total_supply": 221, "total_req": 1549, "rate": 7.009, "price": 1337, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "75.9380B", "pyeong": "중소형", "total_supply": 51, "total_req": 344, "rate": 6.7451, "price": 1441, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "84.8537E", "pyeong": "중소형", "total_supply": 176, "total_req": 1170, "rate": 6.6477, "price": 1443, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "75.6170A", "pyeong": "중소형", "total_supply": 261, "total_req": 1725, "rate": 6.6092, "price": 1399, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "84.9939D", "pyeong": "중소형", "total_supply": 69, "total_req": 450, "rate": 6.5217, "price": 1614, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "84.9800C", "pyeong": "중소형", "total_supply": 134, "total_req": 868, "rate": 6.4776, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "84.9939A", "pyeong": "중소형", "total_supply": 516, "total_req": 2993, "rate": 5.8004, "price": 1614, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "73.5338A", "pyeong": "중소형", "total_supply": 43, "total_req": 244, "rate": 5.6744, "price": 1439, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "75.3083A", "pyeong": "중소형", "total_supply": 203, "total_req": 1137, "rate": 5.601, "price": 1289, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "84.4933B", "pyeong": "중소형", "total_supply": 25, "total_req": 135, "rate": 5.4, "price": 1416, "shortage": 9, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "84.9927B", "pyeong": "중소형", "total_supply": 48, "total_req": 251, "rate": 5.2292, "price": 1616, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "62.9691B", "pyeong": "중소형", "total_supply": 161, "total_req": 837, "rate": 5.1988, "price": 1459, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "76.9900A", "pyeong": "중소형", "total_supply": 145, "total_req": 729, "rate": 5.0276, "price": 1407, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "84.9091C", "pyeong": "중소형", "total_supply": 111, "total_req": 533, "rate": 4.8018, "price": 1518, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "63.9980B", "pyeong": "중소형", "total_supply": 112, "total_req": 520, "rate": 4.6429, "price": 1437, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "76.9900B", "pyeong": "중소형", "total_supply": 180, "total_req": 819, "rate": 4.55, "price": 1351, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "84.9823B", "pyeong": "중소형", "total_supply": 213, "total_req": 927, "rate": 4.3521, "price": 1739, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "72.9545B", "pyeong": "중소형", "total_supply": 27, "total_req": 116, "rate": 4.2963, "price": 1757, "shortage": 8, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "84.4041A", "pyeong": "중소형", "total_supply": 258, "total_req": 1017, "rate": 3.9419, "price": 1618, "shortage": 0, "names": ["두산위브 광주센트럴파크"], "count": 1}, {"ty": "63.8510A", "pyeong": "중소형", "total_supply": 79, "total_req": 307, "rate": 3.8861, "price": 1514, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "74.7276E", "pyeong": "중소형", "total_supply": 102, "total_req": 369, "rate": 3.6176, "price": 1485, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "84.9963C", "pyeong": "중소형", "total_supply": 191, "total_req": 686, "rate": 3.5916, "price": 1720, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "62.6775A", "pyeong": "중소형", "total_supply": 82, "total_req": 293, "rate": 3.5732, "price": 1306, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "74.9678D", "pyeong": "중소형", "total_supply": 103, "total_req": 357, "rate": 3.466, "price": 1486, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "84.8786B", "pyeong": "중소형", "total_supply": 221, "total_req": 621, "rate": 2.81, "price": 1251, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "75.7994B", "pyeong": "중소형", "total_supply": 184, "total_req": 425, "rate": 2.3098, "price": 1254, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "84.2146B", "pyeong": "중소형", "total_supply": 124, "total_req": 239, "rate": 1.9274, "price": 1544, "shortage": 0, "names": ["두산위브 광주센트럴파크"], "count": 1}, {"ty": "84.9969A", "pyeong": "중소형", "total_supply": 200, "total_req": 376, "rate": 1.88, "price": 1897, "shortage": 0, "names": ["광주태전 경남아너스빌 리미티드"], "count": 1}, {"ty": "84.0908C", "pyeong": "중소형", "total_supply": 12, "total_req": 21, "rate": 1.75, "price": 1306, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 1}, {"ty": "73.8508B", "pyeong": "중소형", "total_supply": 43, "total_req": 75, "rate": 1.7442, "price": 1401, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "62.9549B", "pyeong": "중소형", "total_supply": 85, "total_req": 145, "rate": 1.7059, "price": 1267, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "84.9935A", "pyeong": "중소형", "total_supply": 64, "total_req": 95, "rate": 1.4844, "price": 2201, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9876B", "pyeong": "중소형", "total_supply": 84, "total_req": 85, "rate": 1.0119, "price": 1793, "shortage": 0, "names": ["곤지암역 제일풍경채"], "count": 1}, {"ty": "84.6234A", "pyeong": "중소형", "total_supply": 212, "total_req": 211, "rate": 0.9953, "price": 1730, "shortage": 1, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.8237A", "pyeong": "중소형", "total_supply": 448, "total_req": 440, "rate": 0.9821, "price": 1809, "shortage": 8, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "84.9223C", "pyeong": "중소형", "total_supply": 134, "total_req": 124, "rate": 0.9254, "price": 2201, "shortage": 10, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9912B", "pyeong": "중소형", "total_supply": 133, "total_req": 105, "rate": 0.7895, "price": 2223, "shortage": 28, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "74.8101A", "pyeong": "중소형", "total_supply": 135, "total_req": 87, "rate": 0.6444, "price": 1696, "shortage": 48, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.9825B", "pyeong": "중소형", "total_supply": 204, "total_req": 130, "rate": 0.6373, "price": 1889, "shortage": 74, "names": ["광주태전 경남아너스빌 리미티드"], "count": 1}, {"ty": "84.8425C", "pyeong": "중소형", "total_supply": 113, "total_req": 63, "rate": 0.5575, "price": 1687, "shortage": 50, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.9544B", "pyeong": "중소형", "total_supply": 179, "total_req": 94, "rate": 0.5251, "price": 1776, "shortage": 85, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "84.9050A", "pyeong": "중소형", "total_supply": 242, "total_req": 119, "rate": 0.4917, "price": 1792, "shortage": 123, "names": ["곤지암역 제일풍경채"], "count": 1}, {"ty": "84.9704B", "pyeong": "중소형", "total_supply": 19, "total_req": 8, "rate": 0.4211, "price": 1830, "shortage": 11, "names": ["곤지암역 센트럴 아이파크"], "count": 1}, {"ty": "84.9728A", "pyeong": "중소형", "total_supply": 286, "total_req": 74, "rate": 0.2587, "price": 1867, "shortage": 212, "names": ["곤지암역 센트럴 아이파크"], "count": 1}, {"ty": "84.9871D", "pyeong": "중소형", "total_supply": 138, "total_req": 28, "rate": 0.2029, "price": 2168, "shortage": 110, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.6150B", "pyeong": "중소형", "total_supply": 48, "total_req": 8, "rate": 0.1667, "price": 1672, "shortage": 40, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.9264C", "pyeong": "중소형", "total_supply": 87, "total_req": 9, "rate": 0.1034, "price": 1797, "shortage": 78, "names": ["곤지암역 제일풍경채"], "count": 1}], "중형(85~102㎡)": [{"ty": "92.0000T", "pyeong": "중형", "total_supply": 33, "total_req": 1530, "rate": 46.3636, "price": 1298, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "101.8979", "pyeong": "중형", "total_supply": 30, "total_req": 1060, "rate": 35.3333, "price": 1614, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "99.5304", "pyeong": "중형", "total_supply": 84, "total_req": 673, "rate": 8.0119, "price": 1646, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "97.0861A", "pyeong": "중형", "total_supply": 5, "total_req": 16, "rate": 3.2, "price": 1266, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 1}, {"ty": "96.9959A", "pyeong": "중형", "total_supply": 62, "total_req": 86, "rate": 1.3871, "price": 2179, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "96.9463B", "pyeong": "중형", "total_supply": 64, "total_req": 13, "rate": 0.2031, "price": 2179, "shortage": 51, "names": ["해링턴 스퀘어 리버파크"], "count": 1}]}, "dong_detail": {"곤지암읍": [{"ty": "59.8372A", "pyeong": "소형", "total_supply": 152, "total_req": 780, "rate": 5.1316, "price": 1864, "shortage": 0, "names": ["곤지암역 제일풍경채"], "count": 1}, {"ty": "139.6980A", "pyeong": "대형", "total_supply": 4, "total_req": 5, "rate": 1.25, "price": 2524, "shortage": 0, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "84.9876B", "pyeong": "중소형", "total_supply": 84, "total_req": 85, "rate": 1.0119, "price": 1793, "shortage": 0, "names": ["곤지암역 제일풍경채"], "count": 1}, {"ty": "84.8237A", "pyeong": "중소형", "total_supply": 448, "total_req": 440, "rate": 0.9821, "price": 1809, "shortage": 8, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "139.7239B", "pyeong": "대형", "total_supply": 4, "total_req": 3, "rate": 0.75, "price": 2518, "shortage": 1, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "84.9544B", "pyeong": "중소형", "total_supply": 179, "total_req": 94, "rate": 0.5251, "price": 1776, "shortage": 85, "names": ["힐스테이트 광주곤지암역"], "count": 1}, {"ty": "84.9050A", "pyeong": "중소형", "total_supply": 242, "total_req": 119, "rate": 0.4917, "price": 1792, "shortage": 123, "names": ["곤지암역 제일풍경채"], "count": 1}, {"ty": "84.9704B", "pyeong": "중소형", "total_supply": 19, "total_req": 8, "rate": 0.4211, "price": 1830, "shortage": 11, "names": ["곤지암역 센트럴 아이파크"], "count": 1}, {"ty": "84.9728A", "pyeong": "중소형", "total_supply": 286, "total_req": 74, "rate": 0.2587, "price": 1867, "shortage": 212, "names": ["곤지암역 센트럴 아이파크"], "count": 1}, {"ty": "110.4198", "pyeong": "대형", "total_supply": 42, "total_req": 9, "rate": 0.2143, "price": 1871, "shortage": 33, "names": ["곤지암역 센트럴 아이파크"], "count": 1}, {"ty": "84.9264C", "pyeong": "중소형", "total_supply": 87, "total_req": 9, "rate": 0.1034, "price": 1797, "shortage": 78, "names": ["곤지암역 제일풍경채"], "count": 1}], "삼동": [{"ty": "84.5140", "pyeong": "중소형", "total_supply": 62, "total_req": 1132, "rate": 18.2581, "price": 1458, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "75.9380B", "pyeong": "중소형", "total_supply": 51, "total_req": 344, "rate": 6.7451, "price": 1441, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "75.6170A", "pyeong": "중소형", "total_supply": 261, "total_req": 1725, "rate": 6.6092, "price": 1399, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "63.9980B", "pyeong": "중소형", "total_supply": 112, "total_req": 520, "rate": 4.6429, "price": 1437, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}, {"ty": "63.8510A", "pyeong": "중소형", "total_supply": 79, "total_req": 307, "rate": 3.8861, "price": 1514, "shortage": 0, "names": ["힐스테이트 삼동역"], "count": 1}], "송정동": [{"ty": "99.5304", "pyeong": "중형", "total_supply": 84, "total_req": 673, "rate": 8.0119, "price": 1646, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "84.9939D", "pyeong": "중소형", "total_supply": 69, "total_req": 450, "rate": 6.5217, "price": 1614, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "84.9939A", "pyeong": "중소형", "total_supply": 516, "total_req": 2993, "rate": 5.8004, "price": 1614, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "84.9927B", "pyeong": "중소형", "total_supply": 48, "total_req": 251, "rate": 5.2292, "price": 1616, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "84.9091C", "pyeong": "중소형", "total_supply": 111, "total_req": 533, "rate": 4.8018, "price": 1518, "shortage": 0, "names": ["광주 행정타운 아이파크"], "count": 1}, {"ty": "59.8670A", "pyeong": "소형", "total_supply": 131, "total_req": 330, "rate": 2.5191, "price": 1730, "shortage": 0, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.6234A", "pyeong": "중소형", "total_supply": 212, "total_req": 211, "rate": 0.9953, "price": 1730, "shortage": 1, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "59.7670C", "pyeong": "소형", "total_supply": 130, "total_req": 105, "rate": 0.8077, "price": 1693, "shortage": 25, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "74.8101A", "pyeong": "중소형", "total_supply": 135, "total_req": 87, "rate": 0.6444, "price": 1696, "shortage": 48, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.8425C", "pyeong": "중소형", "total_supply": 113, "total_req": 63, "rate": 0.5575, "price": 1687, "shortage": 50, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "59.6827B", "pyeong": "소형", "total_supply": 71, "total_req": 19, "rate": 0.2676, "price": 1696, "shortage": 52, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}, {"ty": "84.6150B", "pyeong": "중소형", "total_supply": 48, "total_req": 8, "rate": 0.1667, "price": 1672, "shortage": 40, "names": ["광주 송정 중흥S-클래스 파크뷰"], "count": 1}], "역동": [{"ty": "59.9607A", "pyeong": "소형", "total_supply": 143, "total_req": 1665, "rate": 11.6434, "price": 1753, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "59.9844A", "pyeong": "소형", "total_supply": 72, "total_req": 656, "rate": 9.1111, "price": 2335, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9099A", "pyeong": "중소형", "total_supply": 484, "total_req": 3911, "rate": 8.0806, "price": 1773, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "59.9893B", "pyeong": "소형", "total_supply": 121, "total_req": 744, "rate": 6.1488, "price": 1721, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "84.9823B", "pyeong": "중소형", "total_supply": 213, "total_req": 927, "rate": 4.3521, "price": 1739, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "59.8224B", "pyeong": "소형", "total_supply": 144, "total_req": 615, "rate": 4.2708, "price": 2311, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9963C", "pyeong": "중소형", "total_supply": 191, "total_req": 686, "rate": 3.5916, "price": 1720, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "150.9956", "pyeong": "대형", "total_supply": 4, "total_req": 6, "rate": 1.5, "price": 2700, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9935A", "pyeong": "중소형", "total_supply": 64, "total_req": 95, "rate": 1.4844, "price": 2201, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "96.9959A", "pyeong": "중형", "total_supply": 62, "total_req": 86, "rate": 1.3871, "price": 2179, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "114.9779A", "pyeong": "대형", "total_supply": 253, "total_req": 311, "rate": 1.2292, "price": 1809, "shortage": 0, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "161.8506", "pyeong": "대형", "total_supply": 2, "total_req": 2, "rate": 1.0, "price": 2700, "shortage": 0, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9223C", "pyeong": "중소형", "total_supply": 134, "total_req": 124, "rate": 0.9254, "price": 2201, "shortage": 10, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9912B", "pyeong": "중소형", "total_supply": 133, "total_req": 105, "rate": 0.7895, "price": 2223, "shortage": 28, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "114.9822B", "pyeong": "대형", "total_supply": 144, "total_req": 58, "rate": 0.4028, "price": 1810, "shortage": 86, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "114.9165C", "pyeong": "대형", "total_supply": 141, "total_req": 38, "rate": 0.2695, "price": 1808, "shortage": 103, "names": ["광주 더파크 비스타 데시앙"], "count": 1}, {"ty": "96.9463B", "pyeong": "중형", "total_supply": 64, "total_req": 13, "rate": 0.2031, "price": 2179, "shortage": 51, "names": ["해링턴 스퀘어 리버파크"], "count": 1}, {"ty": "84.9871D", "pyeong": "중소형", "total_supply": 138, "total_req": 28, "rate": 0.2029, "price": 2168, "shortage": 110, "names": ["해링턴 스퀘어 리버파크"], "count": 1}], "오포읍": [{"ty": "104.9454A", "pyeong": "대형", "total_supply": 2, "total_req": 98, "rate": 49.0, "price": 1982, "shortage": 0, "names": ["오포자이 오브제 C-1BL"], "count": 1}, {"ty": "92.0000T", "pyeong": "중형", "total_supply": 33, "total_req": 1530, "rate": 46.3636, "price": 1298, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "104.0000P", "pyeong": "대형", "total_supply": 11, "total_req": 267, "rate": 24.2727, "price": 1959, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "84.9959A", "pyeong": "중소형", "total_supply": 302, "total_req": 6360, "rate": 21.0596, "price": 1447, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "62.9797A", "pyeong": "중소형", "total_supply": 61, "total_req": 949, "rate": 15.5574, "price": 1453, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "84.9800B", "pyeong": "중소형", "total_supply": 164, "total_req": 1774, "rate": 10.8171, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "69.8197A", "pyeong": "중소형", "total_supply": 9, "total_req": 94, "rate": 10.4444, "price": 1304, "shortage": 0, "names": ["오포자이 디 오브 C-3BL"], "count": 1}, {"ty": "84.9959B", "pyeong": "중소형", "total_supply": 149, "total_req": 1518, "rate": 10.1879, "price": 1419, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "84.9525C", "pyeong": "중소형", "total_supply": 73, "total_req": 729, "rate": 9.9863, "price": 1378, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "82.0000T", "pyeong": "중소형", "total_supply": 12, "total_req": 108, "rate": 9.0, "price": 1319, "shortage": 0, "names": ["오포자이 디 오브 C-4BL"], "count": 1}, {"ty": "84.9658D", "pyeong": "중소형", "total_supply": 175, "total_req": 1553, "rate": 8.8743, "price": 1452, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "82.1499C", "pyeong": "중소형", "total_supply": 9, "total_req": 79, "rate": 8.7778, "price": 1266, "shortage": 0, "names": ["오포자이 디 오브 C-3BL"], "count": 1}, {"ty": "84.9600A", "pyeong": "중소형", "total_supply": 207, "total_req": 1780, "rate": 8.599, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "69.0000T", "pyeong": "중소형", "total_supply": 9, "total_req": 74, "rate": 8.2222, "price": 1306, "shortage": 0, "names": ["오포자이 디 오브 C-4BL"], "count": 1}, {"ty": "74.9676A", "pyeong": "중소형", "total_supply": 285, "total_req": 2203, "rate": 7.7298, "price": 1475, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "74.9499C", "pyeong": "중소형", "total_supply": 92, "total_req": 710, "rate": 7.7174, "price": 1405, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL"], "count": 2}, {"ty": "74.9676B", "pyeong": "중소형", "total_supply": 58, "total_req": 414, "rate": 7.1379, "price": 1447, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "84.9800D", "pyeong": "중소형", "total_supply": 221, "total_req": 1549, "rate": 7.009, "price": 1337, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "84.8537E", "pyeong": "중소형", "total_supply": 176, "total_req": 1170, "rate": 6.6477, "price": 1443, "shortage": 0, "names": ["오포자이 디 오브 C-3BL", "오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 3}, {"ty": "84.9800C", "pyeong": "중소형", "total_supply": 134, "total_req": 868, "rate": 6.4776, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "62.9691B", "pyeong": "중소형", "total_supply": 161, "total_req": 837, "rate": 5.1988, "price": 1459, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "76.9900A", "pyeong": "중소형", "total_supply": 145, "total_req": 729, "rate": 5.0276, "price": 1407, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "76.9900B", "pyeong": "중소형", "total_supply": 180, "total_req": 819, "rate": 4.55, "price": 1351, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "59.9600A", "pyeong": "소형", "total_supply": 184, "total_req": 708, "rate": 3.8478, "price": 1449, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "74.7276E", "pyeong": "중소형", "total_supply": 102, "total_req": 369, "rate": 3.6176, "price": 1485, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "74.9678D", "pyeong": "중소형", "total_supply": 103, "total_req": 357, "rate": 3.466, "price": 1486, "shortage": 0, "names": ["오포자이 디 오브 C-4BL", "오포자이 오브제 C-1BL"], "count": 2}, {"ty": "59.9700C", "pyeong": "소형", "total_supply": 192, "total_req": 655, "rate": 3.4115, "price": 1393, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}, {"ty": "59.9800B", "pyeong": "소형", "total_supply": 48, "total_req": 160, "rate": 3.3333, "price": 1449, "shortage": 0, "names": ["더샵 오포센트리체"], "count": 1}], "장지동": [{"ty": "84.9969A", "pyeong": "중소형", "total_supply": 200, "total_req": 376, "rate": 1.88, "price": 1897, "shortage": 0, "names": ["광주태전 경남아너스빌 리미티드"], "count": 1}, {"ty": "84.9825B", "pyeong": "중소형", "total_supply": 204, "total_req": 130, "rate": 0.6373, "price": 1889, "shortage": 74, "names": ["광주태전 경남아너스빌 리미티드"], "count": 1}], "초월읍": [{"ty": "101.8979", "pyeong": "중형", "total_supply": 30, "total_req": 1060, "rate": 35.3333, "price": 1614, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "84.9636C", "pyeong": "중소형", "total_supply": 18, "total_req": 486, "rate": 27.0, "price": 1614, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "59.9515A", "pyeong": "소형", "total_supply": 73, "total_req": 1833, "rate": 25.1096, "price": 1550, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "84.9436A", "pyeong": "중소형", "total_supply": 548, "total_req": 12791, "rate": 23.3412, "price": 1615, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "74.9803A", "pyeong": "중소형", "total_supply": 71, "total_req": 1655, "rate": 23.3099, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "84.9436D", "pyeong": "중소형", "total_supply": 18, "total_req": 405, "rate": 22.5, "price": 1615, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "74.8250C", "pyeong": "중소형", "total_supply": 16, "total_req": 331, "rate": 20.6875, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "64.9890B", "pyeong": "중소형", "total_supply": 15, "total_req": 308, "rate": 20.5333, "price": 1519, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "59.7725B", "pyeong": "소형", "total_supply": 16, "total_req": 318, "rate": 19.875, "price": 1519, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "84.9893B", "pyeong": "중소형", "total_supply": 50, "total_req": 982, "rate": 19.64, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "74.8118F", "pyeong": "중소형", "total_supply": 83, "total_req": 1545, "rate": 18.6145, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "64.8587A", "pyeong": "중소형", "total_supply": 65, "total_req": 1174, "rate": 18.0615, "price": 1550, "shortage": 0, "names": ["힐스테이트 초월역 2BL"], "count": 1}, {"ty": "74.7999E", "pyeong": "중소형", "total_supply": 44, "total_req": 706, "rate": 16.0455, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "74.9743B", "pyeong": "중소형", "total_supply": 16, "total_req": 253, "rate": 15.8125, "price": 1551, "shortage": 0, "names": ["힐스테이트 초월역 1BL"], "count": 1}, {"ty": "74.8867D", "pyeong": "중소형", "total_supply": 34, "total_req": 470, "rate": 13.8235, "price": 1582, "shortage": 0, "names": ["힐스테이트 초월역 1BL", "힐스테이트 초월역 2BL"], "count": 2}, {"ty": "84.9908A", "pyeong": "중소형", "total_supply": 56, "total_req": 704, "rate": 12.5714, "price": 1440, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "84.9396A", "pyeong": "중소형", "total_supply": 333, "total_req": 2964, "rate": 8.9009, "price": 1282, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "59.9739A", "pyeong": "소형", "total_supply": 10, "total_req": 57, "rate": 5.7, "price": 1528, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "73.5338A", "pyeong": "중소형", "total_supply": 43, "total_req": 244, "rate": 5.6744, "price": 1439, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "75.3083A", "pyeong": "중소형", "total_supply": 203, "total_req": 1137, "rate": 5.601, "price": 1289, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "84.4933B", "pyeong": "중소형", "total_supply": 25, "total_req": 135, "rate": 5.4, "price": 1416, "shortage": 9, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "62.6775A", "pyeong": "중소형", "total_supply": 82, "total_req": 293, "rate": 3.5732, "price": 1306, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "97.0861A", "pyeong": "중형", "total_supply": 5, "total_req": 16, "rate": 3.2, "price": 1266, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 1}, {"ty": "84.8786B", "pyeong": "중소형", "total_supply": 221, "total_req": 621, "rate": 2.81, "price": 1251, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "75.7994B", "pyeong": "중소형", "total_supply": 184, "total_req": 425, "rate": 2.3098, "price": 1254, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}, {"ty": "59.8004B", "pyeong": "소형", "total_supply": 13, "total_req": 29, "rate": 2.2308, "price": 1516, "shortage": 3, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "84.0908C", "pyeong": "중소형", "total_supply": 12, "total_req": 21, "rate": 1.75, "price": 1306, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 1}, {"ty": "73.8508B", "pyeong": "중소형", "total_supply": 43, "total_req": 75, "rate": 1.7442, "price": 1401, "shortage": 0, "names": ["쌍용 더 플래티넘 광주"], "count": 2}, {"ty": "62.9549B", "pyeong": "중소형", "total_supply": 85, "total_req": 145, "rate": 1.7059, "price": 1267, "shortage": 0, "names": ["광주 초월역 한라비발디"], "count": 1}], "탄벌동": [{"ty": "72.9042A", "pyeong": "중소형", "total_supply": 70, "total_req": 557, "rate": 7.9571, "price": 1775, "shortage": 9, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "72.9545B", "pyeong": "중소형", "total_supply": 27, "total_req": 116, "rate": 4.2963, "price": 1757, "shortage": 8, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "84.4041A", "pyeong": "중소형", "total_supply": 258, "total_req": 1017, "rate": 3.9419, "price": 1618, "shortage": 0, "names": ["두산위브 광주센트럴파크"], "count": 1}, {"ty": "59.7334", "pyeong": "소형", "total_supply": 271, "total_req": 656, "rate": 2.4207, "price": 1605, "shortage": 0, "names": ["두산위브 광주센트럴파크"], "count": 1}, {"ty": "59.9557B", "pyeong": "소형", "total_supply": 26, "total_req": 58, "rate": 2.2308, "price": 1746, "shortage": 0, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "84.2146B", "pyeong": "중소형", "total_supply": 124, "total_req": 239, "rate": 1.9274, "price": 1544, "shortage": 0, "names": ["두산위브 광주센트럴파크"], "count": 1}, {"ty": "59.9591C", "pyeong": "소형", "total_supply": 57, "total_req": 102, "rate": 1.7895, "price": 1711, "shortage": 10, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "59.9807C", "pyeong": "소형", "total_supply": 76, "total_req": 111, "rate": 1.4605, "price": 1759, "shortage": 23, "names": ["광주 탄벌 서희스타힐스 2단지", "광주탄벌 서희스타힐스2단지"], "count": 4}, {"ty": "59.9681A", "pyeong": "소형", "total_supply": 64, "total_req": 83, "rate": 1.2969, "price": 1768, "shortage": 15, "names": ["광주 탄벌 서희스타힐스 2단지", "광주탄벌 서희스타힐스2단지"], "count": 4}, {"ty": "59.7462D", "pyeong": "소형", "total_supply": 34, "total_req": 38, "rate": 1.1176, "price": 1708, "shortage": 12, "names": ["광주 탄벌 서희스타힐스 1단지", "광주탄벌 서희스타힐스1단지"], "count": 4}, {"ty": "59.9553E", "pyeong": "소형", "total_supply": 46, "total_req": 50, "rate": 1.087, "price": 1713, "shortage": 19, "names": ["광주 탄벌 서희스타힐스 2단지", "광주탄벌 서희스타힐스2단지"], "count": 4}]}};
+
+// ── 유틸 ──────────────────────────────────────────────────────────
+const PC=['#58a6ff','#3fb950','#e3b341','#d2a8ff'];
+const BC={'소형':'bs','중소형':'bm','중형':'bm2','대형':'bl'};
+function col(r){return r>=10?'#3fb950':r>=3?'#58a6ff':r>=1?'#e3b341':'#f78166'}
+function rchip(r){const c=r>=5?'hot':r>=2?'mid':'cold';return'<span class="rc '+c+'">'+r.toFixed(2)+':1</span>'}
+function n(v){return Number(v).toLocaleString()}
+function stype(t){return t.split('(')[0]}
+function bclass(t){return BC[stype(t)]||''}
+
+// ── 탭 ────────────────────────────────────────────────────────────
+function show(tab){
+  document.querySelectorAll('.view').forEach(function(el){el.classList.remove('on')});
+  document.querySelectorAll('.tab-btn').forEach(function(el){el.classList.remove('on')});
+  document.getElementById('v-'+tab).classList.add('on');
+  var btnSel=document.querySelector('[data-tab="'+tab+'"]');if(btnSel)btnSel.classList.add('on');
+  if(tab==='stats'&&!window._cd){window._cd=true;setTimeout(drawAllCharts,60)}
+}
+
+// ── 지도 엔진 ──────────────────────────────────────────────────────
+var MAP = {
+  zoom: 13,
+  centerLat: 37.415,
+  centerLon: 127.258,
+  TILE: 256,
+  minZoom: 11,
+  maxZoom: 16,
+  dragging: false,
+  dragStartX: 0, dragStartY: 0,
+  dragStartLon: 0, dragStartLat: 0
+};
+
+function toTileF(lat, lon, zoom) {
+  var n = Math.pow(2, zoom);
+  var tx = (lon + 180) / 360 * n;
+  var sinLat = Math.sin(lat * Math.PI / 180);
+  var ty = (1 - Math.log((1 + sinLat) / (1 - sinLat)) / (4 * Math.PI)) * n;
+  return {tx: tx, ty: ty};
+}
+
+function latLonToPx(lat, lon) {
+  var wrap = document.getElementById('map-wrap');
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  var c = toTileF(MAP.centerLat, MAP.centerLon, MAP.zoom);
+  var p = toTileF(lat, lon, MAP.zoom);
+  return {
+    x: (p.tx - c.tx) * MAP.TILE + W / 2,
+    y: (p.ty - c.ty) * MAP.TILE + H / 2
+  };
+}
+
+function pxToLatLon(px, py) {
+  var wrap = document.getElementById('map-wrap');
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  var c = toTileF(MAP.centerLat, MAP.centerLon, MAP.zoom);
+  var n = Math.pow(2, MAP.zoom);
+  var tx = c.tx + (px - W / 2) / MAP.TILE;
+  var ty = c.ty + (py - H / 2) / MAP.TILE;
+  var lon = tx / n * 360 - 180;
+  var lat = Math.atan(Math.sinh(Math.PI * (1 - 2 * ty / n))) * 180 / Math.PI;
+  return {lat: lat, lon: lon};
+}
+
+function renderTiles() {
+  var wrap = document.getElementById('map-wrap');
+  var W = wrap.clientWidth, H = wrap.clientHeight;
+  var tl = document.getElementById('tile-layer');
+  tl.innerHTML = '';
+  var c = toTileF(MAP.centerLat, MAP.centerLon, MAP.zoom);
+  var x0 = Math.floor(c.tx - W / 2 / MAP.TILE);
+  var y0 = Math.floor(c.ty - H / 2 / MAP.TILE);
+  var x1 = Math.ceil(c.tx + W / 2 / MAP.TILE);
+  var y1 = Math.ceil(c.ty + H / 2 / MAP.TILE);
+  var frag = document.createDocumentFragment();
+  var loadCount = 0, totalCount = 0;
+  var statusEl = document.getElementById('tile-status');
+  function updateStatus() {
+    if (!statusEl) return;
+    if (totalCount === 0) return;
+    if (loadCount >= totalCount) { statusEl.textContent = ''; }
+    else { statusEl.innerHTML = '지도 로딩 중...<br><span style="font-size:10px;color:var(--mut)">인터넷 연결 필요</span>'; }
+  }
+  for (var ty = y0; ty <= y1; ty++) {
+    for (var tx = x0; tx <= x1; tx++) {
+      var img = document.createElement('img');
+      var sub = ['a','b','c'][Math.abs(tx + ty) % 3];
+      img.src = 'https://' + sub + '.tile.openstreetmap.org/' + MAP.zoom + '/' + tx + '/' + ty + '.png';
+      img.style.left = ((tx - c.tx) * MAP.TILE + W / 2) + 'px';
+      img.style.top  = ((ty - c.ty) * MAP.TILE + H / 2) + 'px';
+      img.style.opacity = '0';
+      img.draggable = false;
+      totalCount++;
+      img.onload = (function(el){ return function(){
+        el.style.opacity = '1';
+        loadCount++;
+        updateStatus();
+      }})(img);
+      img.onerror = (function(el){ return function(){
+        el.style.display = 'none';
+        loadCount++;
+        updateStatus();
+      }})(img);
+      frag.appendChild(img);
+    }
+  }
+  tl.appendChild(frag);
+  updateStatus();
+  document.getElementById('zoom-info').textContent = 'zoom ' + MAP.zoom;
+}
+
+function renderMarkers() {
+  var ml = document.getElementById('marker-layer');
+  ml.innerHTML = '';
+  var frag = document.createDocumentFragment();
+  D.dangi.forEach(function(d) {
+    if (d.lat === null) return;
+    var p = latLonToPx(d.lat, d.lon);
+    var r = d.avg_rate;
+    var c = col(r);
+    var sz = MAP.zoom >= 15 ? 52 : MAP.zoom >= 13 ? 44 : 36;
+    var fsSz = MAP.zoom >= 15 ? 11 : MAP.zoom >= 13 ? 10 : 9;
+    var el = document.createElement('div');
+    el.className = 'mm';
+    el.style.left = p.x + 'px';
+    el.style.top  = p.y + 'px';
+    el.innerHTML = '<div class="mm-inner" style="width:'+sz+'px;height:'+sz+'px;border-color:'+c+';box-shadow:0 0 0 3px rgba(0,0,0,.3),0 0 12px '+c+'55">'
+      + '<div class="mm-rate" style="color:'+c+';font-size:'+fsSz+'px">'+r.toFixed(1)+'</div>'
+      + (MAP.zoom >= 13 ? '<div class="mm-name">'+d.name.replace(/ /g,'​ ')+'</div>' : '')
+      + '</div>';
+    el.dataset.name = d.name;
+    el.dataset.date = d.date;
+    el.addEventListener('click', (function(dangi, marker){
+      return function(e) {
+        e.stopPropagation();
+        document.querySelectorAll('.mm').forEach(function(m){m.classList.remove('sel')});
+        marker.classList.add('sel');
+        showPanel(dangi);
+      };
+    })(d, el));
+    frag.appendChild(el);
+  });
+  ml.appendChild(frag);
+}
+
+function render() {
+  renderTiles();
+  renderMarkers();
+}
+
+function zoomMap(delta) {
+  var newZ = MAP.zoom + delta;
+  if (newZ < MAP.minZoom || newZ > MAP.maxZoom) return;
+  MAP.zoom = newZ;
+  render();
+}
+
+function resetMap() {
+  MAP.zoom = 13;
+  MAP.centerLat = 37.415;
+  MAP.centerLon = 127.258;
+  render();
+}
+
+// 드래그 패닝
+(function() {
+  var wrap = document.getElementById('map-wrap');
+  wrap.addEventListener('mousedown', function(e) {
+    if (e.button !== 0) return;
+    MAP.dragging = true;
+    MAP.dragStartX = e.clientX;
+    MAP.dragStartY = e.clientY;
+    MAP.dragStartLat = MAP.centerLat;
+    MAP.dragStartLon = MAP.centerLon;
+  });
+  document.addEventListener('mousemove', function(e) {
+    if (!MAP.dragging) return;
+    var dx = e.clientX - MAP.dragStartX;
+    var dy = e.clientY - MAP.dragStartY;
+    var wrap = document.getElementById('map-wrap');
+    var W = wrap.clientWidth, H = wrap.clientHeight;
+    // 드래그 시작점의 타일 좌표로 역산
+    var startPx = latLonToPx(MAP.dragStartLat, MAP.dragStartLon);
+    var newCenter = pxToLatLon(W/2 - dx, H/2 - dy);
+    MAP.centerLat = newCenter.lat;
+    MAP.centerLon = newCenter.lon;
+    render();
+  });
+  document.addEventListener('mouseup', function() { MAP.dragging = false; });
+  // 휠 줌
+  wrap.addEventListener('wheel', function(e) {
+    e.preventDefault();
+    var delta = e.deltaY < 0 ? 1 : -1;
+    zoomMap(delta);
+  }, {passive: false});
+  // 터치
+  var touchStart = null;
+  wrap.addEventListener('touchstart', function(e) {
+    if (e.touches.length === 1) {
+      touchStart = {x: e.touches[0].clientX, y: e.touches[0].clientY,
+                    lat: MAP.centerLat, lon: MAP.centerLon};
+    }
+  }, {passive: true});
+  wrap.addEventListener('touchmove', function(e) {
+    if (!touchStart || e.touches.length !== 1) return;
+    var dx = e.touches[0].clientX - touchStart.x;
+    var dy = e.touches[0].clientY - touchStart.y;
+    var wrap2 = document.getElementById('map-wrap');
+    var W = wrap2.clientWidth, H = wrap2.clientHeight;
+    MAP.centerLat = touchStart.lat;
+    MAP.centerLon = touchStart.lon;
+    var newCenter = pxToLatLon(W/2 - dx, H/2 - dy);
+    MAP.centerLat = newCenter.lat;
+    MAP.centerLon = newCenter.lon;
+    render();
+  }, {passive: true});
+})();
+
+// ── 패널 ──────────────────────────────────────────────────────────
+function showPanel(d) {
+  document.getElementById('ptitle').textContent = d.name;
+  document.getElementById('psub').textContent = d.date + ' · ' + n(d.total_supply) + '세대';
+  var h = '<div class="sg">'
+    + '<div class="sc"><div class="l">평균 경쟁률</div><div class="v" style="color:var(--acc)">'+d.avg_rate.toFixed(2)+'<span style="font-size:11px;color:var(--mut)">:1</span></div></div>'
+    + '<div class="sc"><div class="l">평당분양가</div><div class="v" style="color:var(--pur)">'+n(Math.round(d.avg_price))+'<span style="font-size:9px;color:var(--mut)">만원</span></div></div>'
+    + '<div class="sc"><div class="l">총 공급세대</div><div class="v" style="color:var(--grn)">'+n(d.total_supply)+'<span style="font-size:9px;color:var(--mut)">세대</span></div></div>'
+    + '<div class="sc"><div class="l">미달세대 합계</div><div class="v" style="color:'+(d.shortage_total>0?'var(--red)':'var(--grn)')+'">'+n(d.shortage_total)+'<span style="font-size:9px;color:var(--mut)">세대</span></div></div>'
+    + '</div>'
+    + '<div class="stitle">평형별 상세<span>(전용면적 · 경쟁률 · 평당분양가)</span></div>'
+    + '<table class="ptbl"><tr><th>평형</th><th>주택형</th><th>공급</th><th>경쟁률</th><th>평당(만)</th></tr>';
+  var mx = Math.max.apply(null, d.types.map(function(t){return t.rate}).concat([0.01]));
+  d.types.forEach(function(t) {
+    h += '<tr>'
+      + '<td><span class="badge '+bclass(t.type)+'">'+stype(t.type)+'</span></td>'
+      + '<td>'+t.ty+'</td>'
+      + '<td>'+t.supply+'</td>'
+      + '<td><div class="rw"><div class="rb" style="width:'+Math.round(t.rate/mx*48)+'px;background:'+col(t.rate)+'"></div>'
+      + '<span class="rv" style="color:'+col(t.rate)+'">'+t.rate.toFixed(2)+'</span>'
+      + (t.shortage>0?'<span class="sp">△'+t.shortage+'</span>':'')
+      + '</div></td>'
+      + '<td>'+n(t.price)+'</td>'
+      + '</tr>';
+  });
+  h += '</table>';
+  document.getElementById('pbody').innerHTML = h;
+}
+
+function flyToAndShow(dangi) {
+  if (dangi.lat) {
+    MAP.centerLat = dangi.lat;
+    MAP.centerLon = dangi.lon;
+    MAP.zoom = 15;
+    render();
+    setTimeout(function() {
+      var el = document.querySelector('.mm[data-name="'+dangi.name+'"][data-date="'+dangi.date+'"]');
+      if (el) {
+        document.querySelectorAll('.mm').forEach(function(m){m.classList.remove('sel')});
+        el.classList.add('sel');
+      }
+      showPanel(dangi);
+    }, 80);
+  }
+}
+
+// ── Canvas 차트 ────────────────────────────────────────────────────
+function drawBar(id,labels,values,colors,yLabel){
+  var el=document.getElementById(id);if(!el)return;
+  el.width=el.parentElement.clientWidth-36||400;
+  var ctx=el.getContext('2d'),W=el.width,H=el.height;
+  var p={t:20,r:16,b:46,l:52},cw=W-p.l-p.r,ch=H-p.t-p.b;
+  var max=Math.max.apply(null,values)*1.15||1;
+  var bw=Math.floor(cw/values.length*0.55),gap=(cw-bw*values.length)/(values.length+1);
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+  ctx.strokeStyle='#21262d';ctx.lineWidth=1;
+  for(var i=0;i<=4;i++){
+    var y=p.t+ch*(1-i/4);ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(p.l+cw,y);ctx.stroke();
+    ctx.fillStyle='#7d8590';ctx.font='10px monospace';ctx.textAlign='right';
+    ctx.fillText((max*i/4).toFixed(max>50?0:1),p.l-4,y+4);
+  }
+  values.forEach(function(v,i){
+    var x=p.l+gap+(bw+gap)*i,bh=ch*(v/max),y=p.t+ch-bh;
+    var g2=ctx.createLinearGradient(0,y,0,y+bh);
+    g2.addColorStop(0,colors[i%colors.length]+'ee');g2.addColorStop(1,colors[i%colors.length]+'44');
+    ctx.fillStyle=g2;
+    ctx.beginPath();if(ctx.roundRect)ctx.roundRect(x,y,bw,bh,4);else ctx.rect(x,y,bw,bh);ctx.fill();
+    ctx.fillStyle='#e6edf3';ctx.font='bold 10px monospace';ctx.textAlign='center';
+    ctx.fillText(v.toFixed(v>=100?0:1),x+bw/2,Math.max(y-4,p.t+10));
+    ctx.fillStyle='#7d8590';ctx.font='10px sans-serif';ctx.fillText(labels[i],x+bw/2,H-p.b+14);
+  });
+  ctx.save();ctx.translate(13,p.t+ch/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#7d8590';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(yLabel,0,0);ctx.restore();
+}
+function drawHBar(id,labels,values,colors){
+  var el=document.getElementById(id);if(!el)return;
+  el.width=el.parentElement.clientWidth-36||400;
+  var ctx=el.getContext('2d'),W=el.width,H=el.height;
+  var p={t:10,r:55,b:22,l:62},cw=W-p.l-p.r,ch=H-p.t-p.b;
+  var max=Math.max.apply(null,values)*1.2||1;
+  var bh=Math.floor(ch/labels.length*0.52),gap=(ch-bh*labels.length)/(labels.length+1);
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+  for(var i=0;i<=4;i++){
+    var x=p.l+cw*i/4;ctx.strokeStyle='#21262d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,p.t+ch);ctx.stroke();
+    ctx.fillStyle='#7d8590';ctx.font='9px monospace';ctx.textAlign='center';ctx.fillText((max*i/4).toFixed(1),x,p.t+ch+14);
+  }
+  labels.forEach(function(lbl,i){
+    var y=p.t+gap+(bh+gap)*i,bw=cw*(values[i]/max);
+    var g2=ctx.createLinearGradient(p.l,0,p.l+bw,0);
+    g2.addColorStop(0,colors[i]+'88');g2.addColorStop(1,colors[i]+'dd');
+    ctx.fillStyle=g2;ctx.beginPath();if(ctx.roundRect)ctx.roundRect(p.l,y,bw,bh,3);else ctx.rect(p.l,y,bw,bh);ctx.fill();
+    ctx.fillStyle='#e6edf3';ctx.font='11px sans-serif';ctx.textAlign='right';ctx.fillText(lbl,p.l-4,y+bh/2+4);
+    ctx.fillStyle='#e6edf3';ctx.font='bold 10px monospace';ctx.textAlign='left';ctx.fillText(values[i].toFixed(2),p.l+bw+4,y+bh/2+4);
+  });
+}
+function drawLine(id){
+  var el=document.getElementById(id);if(!el)return;
+  el.width=el.parentElement.clientWidth-36||400;
+  var ctx=el.getContext('2d'),W=el.width,H=el.height;
+  var p={t:20,r:50,b:52,l:46},cw=W-p.l-p.r,ch=H-p.t-p.b;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+  var years=[2020,2021,2022,2024,2025];
+  var series={소형:[],중소형:[],중형:[],대형:[]};
+  D.yr_py.forEach(function(row){var yr=row[0],type=row[1],rate=row[2];if(series[type])series[type].push([yr,rate])});
+  var maxV=Math.max.apply(null,D.yr_py.map(function(d){return d[2]}))*1.2||1;
+  var colors2={소형:PC[0],중소형:PC[1],중형:PC[2],대형:PC[3]};
+  function xp(yr){return p.l+cw*(years.indexOf(yr)/(years.length-1))}
+  function yp(v){return p.t+ch*(1-v/maxV)}
+  for(var i=0;i<=4;i++){
+    var y=p.t+ch*i/4;ctx.strokeStyle='#21262d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(p.l+cw,y);ctx.stroke();
+    ctx.fillStyle='#7d8590';ctx.font='9px monospace';ctx.textAlign='right';ctx.fillText((maxV*(1-i/4)).toFixed(1),p.l-4,y+3);
+  }
+  years.forEach(function(yr){
+    var x=xp(yr);ctx.strokeStyle='#21262d';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,p.t);ctx.lineTo(x,p.t+ch);ctx.stroke();
+    ctx.fillStyle='#7d8590';ctx.font='10px sans-serif';ctx.textAlign='center';ctx.fillText(yr,x,p.t+ch+14);
+  });
+  Object.entries(series).forEach(function(entry){
+    var name=entry[0],pts=entry[1];if(!pts.length)return;
+    var c2=colors2[name];
+    ctx.beginPath();ctx.strokeStyle=c2;ctx.lineWidth=2;
+    pts.forEach(function(pt,i){i===0?ctx.moveTo(xp(pt[0]),yp(pt[1])):ctx.lineTo(xp(pt[0]),yp(pt[1]))});
+    ctx.stroke();
+    pts.forEach(function(pt){ctx.beginPath();ctx.arc(xp(pt[0]),yp(pt[1]),4,0,Math.PI*2);ctx.fillStyle=c2;ctx.fill()});
+    var last=pts[pts.length-1];
+    ctx.fillStyle=c2;ctx.font='bold 9px sans-serif';ctx.textAlign='left';ctx.fillText(name,xp(last[0])+7,yp(last[1])+4);
+  });
+}
+function drawDonut(id){
+  var el=document.getElementById(id);if(!el)return;
+  el.width=el.parentElement.clientWidth-36||300;
+  var ctx=el.getContext('2d'),W=el.width,H=el.height;
+  var cx=W/2,cy=H/2-15,R=Math.min(W,H)*0.33,ri=R*0.55;
+  ctx.clearRect(0,0,W,H);ctx.fillStyle='#0d1117';ctx.fillRect(0,0,W,H);
+  var total=D.pyeong.reduce(function(s,d){return s+d.supply},0);
+  var angle=-Math.PI/2;
+  D.pyeong.forEach(function(d,i){
+    var slice=2*Math.PI*(d.supply/total);
+    ctx.beginPath();ctx.moveTo(cx,cy);ctx.arc(cx,cy,R,angle,angle+slice);ctx.closePath();
+    ctx.fillStyle=PC[i];ctx.fill();ctx.strokeStyle='#0d1117';ctx.lineWidth=2;ctx.stroke();
+    angle+=slice;
+  });
+  ctx.beginPath();ctx.arc(cx,cy,ri,0,Math.PI*2);ctx.fillStyle='#0d1117';ctx.fill();
+  D.pyeong.forEach(function(d,i){
+    var y=H-50+i*13;ctx.fillStyle=PC[i];ctx.fillRect(4,y-8,10,10);
+    ctx.fillStyle='#7d8590';ctx.font='9px sans-serif';ctx.textAlign='left';
+    ctx.fillText(d.label+' '+(d.supply/total*100).toFixed(1)+'%',18,y);
+  });
+}
+function drawAllCharts(){
+  var pl=D.pyeong.map(function(d){return d.label});
+  (function(){
+  var c1el=document.getElementById('c1');
+  drawBar('c1',pl,D.pyeong.map(function(d){return d.rate}),PC,'경쟁률');
+  // 클릭 이벤트
+  var pyeongFull={'소형':'소형(60㎡이하)','중소형':'중소형(60~85㎡)','중형':'중형(85~102㎡)','대형':'대형(102㎡초과)'};
+  c1el.style.cursor='pointer';
+  c1el.title='클릭하면 평형별 상세 경쟁률을 볼 수 있습니다';
+  c1el.addEventListener('click',function(e){
+    var rect=c1el.getBoundingClientRect();
+    var x=e.clientX-rect.left;
+    var W=c1el.width, H=c1el.height;
+    var p={t:20,r:16,b:46,l:52}, cw=W-p.l-p.r;
+    var labels=pl;
+    var bw=Math.floor(cw/labels.length*0.55);
+    var gap=(cw-bw*labels.length)/(labels.length+1);
+    var idx=-1;
+    labels.forEach(function(_,i){
+      var bx=p.l+gap+(bw+gap)*i;
+      if(x>=bx&&x<=bx+bw) idx=i;
+    });
+    if(idx<0) return;
+    var shortLabel=labels[idx];
+    var fullLabel=pyeongFull[shortLabel]||shortLabel;
+    var items=DD.pyeong_detail[fullLabel]||[];
+    var avg=(items.reduce(function(s,d){return s+d.rate},0)/Math.max(items.length,1)).toFixed(2);
+    openModal(shortLabel+' 평형 상세', '평균 경쟁률 '+avg+':1 · '+items.length+'개 레코드', items, 'pyeong');
+  });
+})();
+  drawBar('c2',pl,D.pyeong.map(function(d){return d.price}),PC,'평당가(만원)');
+  drawLine('c3');
+  var dk=Object.keys(D.dong);
+  drawHBar('c4',dk,dk.map(function(d){return D.dong[d].avg_rate}),dk.map(function(d){return col(D.dong[d].avg_rate)}));
+  // 클릭 이벤트
+  (function(){
+    var c4el=document.getElementById('c4');
+    c4el.style.cursor='pointer';
+    c4el.title='클릭하면 해당 지역의 주택형별 상세 경쟁률을 볼 수 있습니다';
+    c4el.addEventListener('click',function(e){
+      var rect=c4el.getBoundingClientRect();
+      var y=e.clientY-rect.top;
+      var W=c4el.width, H=c4el.height;
+      var p={t:10,r:55,b:22,l:62}, ch=H-p.t-p.b;
+      var labels=dk;
+      var bh=Math.floor(ch/labels.length*0.52);
+      var gap=(ch-bh*labels.length)/(labels.length+1);
+      var idx=-1;
+      labels.forEach(function(_,i){
+        var by=p.t+gap+(bh+gap)*i;
+        if(y>=by&&y<=by+bh) idx=i;
+      });
+      if(idx<0){
+        // 라벨 영역도 허용 (p.l 왼쪽)
+        labels.forEach(function(_,i){
+          var by=p.t+gap+(bh+gap)*i;
+          if(y>=by-4&&y<=by+bh+4) idx=i;
+        });
+      }
+      if(idx<0) return;
+      var dong=labels[idx];
+      var items=DD.dong_detail[dong]||[];
+      var st=D.dong[dong];
+      openModal(dong+' 주택형별 상세', '평균 경쟁률 '+st.avg_rate.toFixed(2)+':1 · '+items.length+'개 레코드', items, 'dong');
+    });
+  })();
+  drawDonut('c5');
+}
+
+// ── 테이블 ────────────────────────────────────────────────────────
+function buildDongTable(){
+  var tbl=document.getElementById('dong-tbl');
+  tbl.innerHTML='<thead><tr><th>읍면동</th><th>단지수</th><th>총공급</th><th>평균경쟁률</th><th>평당분양가</th><th>미달건수</th></tr></thead>';
+  var tb=document.createElement('tbody');
+  Object.entries(D.dong).sort(function(a,b){return b[1].avg_rate-a[1].avg_rate}).forEach(function(entry){
+    var dong=entry[0],st=entry[1];
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td style="font-weight:600">'+dong+'</td>'
+      +'<td style="font-family:var(--mono)">'+st.단지수+'</td>'
+      +'<td style="font-family:var(--mono)">'+n(st.총공급)+'</td>'
+      +'<td>'+rchip(st.avg_rate)+'</td>'
+      +'<td style="font-family:var(--mono)">'+n(Math.round(st.avg_price))+'만</td>'
+      +'<td style="color:'+(st.미달건수>0?'var(--red)':'var(--mut)')+';font-family:var(--mono)">'+st.미달건수+'</td>';
+    tr.onclick=(function(d){return function(){
+      show('map');
+      MAP.centerLat=d.lat;MAP.centerLon=d.lon;MAP.zoom=14;
+      setTimeout(render,50);
+    }})(st);
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+}
+
+var selYr='all';
+function buildDangiTable(){
+  var rows=selYr==='all'?D.dangi:D.dangi.filter(function(d){return String(d.year)===selYr});
+  var tbl=document.getElementById('dangi-tbl');
+  tbl.innerHTML='<thead><tr><th>단지명</th><th>읍면동</th><th>분양일</th><th>공급세대</th><th>평균경쟁률</th><th>평당분양가</th><th>미달세대</th></tr></thead>';
+  var tb=document.createElement('tbody');
+  rows.slice().sort(function(a,b){return b.avg_rate-a.avg_rate}).forEach(function(d){
+    var tr=document.createElement('tr');
+    tr.innerHTML='<td style="font-weight:500">'+d.name+'</td><td>'+d.dong+'</td>'
+      +'<td style="font-family:var(--mono);color:var(--mut)">'+d.date+'</td>'
+      +'<td style="font-family:var(--mono)">'+n(d.total_supply)+'</td>'
+      +'<td>'+rchip(d.avg_rate)+'</td>'
+      +'<td style="font-family:var(--mono)">'+n(Math.round(d.avg_price))+'만</td>'
+      +'<td style="color:'+(d.shortage_total>0?'var(--red)':'var(--mut)')+';font-family:var(--mono)">'+(d.shortage_total||'-')+'</td>';
+    tr.onclick=(function(dangi){return function(){show('map');setTimeout(function(){flyToAndShow(dangi)},100)}})(d);
+    tb.appendChild(tr);
+  });
+  tbl.appendChild(tb);
+}
+
+(function(){
+  var c=document.getElementById('yr-f');
+  ['all','2020','2021','2022','2024','2025'].forEach(function(yr){
+    var b=document.createElement('button');
+    b.className='fc'+(yr==='all'?' on':'');
+    b.textContent=yr==='all'?'전체':yr;
+    b.onclick=function(){
+      selYr=yr;
+      document.querySelectorAll('.fc').forEach(function(x){x.classList.remove('on')});
+      b.classList.add('on');
+      buildDangiTable();
+    };
+    c.appendChild(b);
+  });
+})();
+
+
+// ── 드릴다운 모달 ─────────────────────────────────────────────────
+function closeModal(e) {
+  if (e && e.target !== document.getElementById('modal-overlay')) return;
+  document.getElementById('modal-overlay').classList.remove('open');
+  if (window._modalChart) { window._modalChart = null; }
+}
+document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
+
+function openModal(title, sub, items, mode) {
+  // mode: 'pyeong' | 'dong'
+  document.getElementById('modal-title').textContent = title;
+  document.getElementById('modal-sub').textContent = sub + ' · 경쟁률 = 총접수건수 ÷ 총공급세대수 (주택형 통합)';
+  document.getElementById('modal-overlay').classList.add('open');
+
+  // 차트: 주택형별 평균 경쟁률 (상위 20개, 경쟁률 순 정렬)
+  var sorted = items.slice().sort(function(a,b){return b.rate-a.rate}).slice(0,20);
+  var cEl = document.getElementById('modal-canvas');
+  cEl.width = document.getElementById('modal-canvas-wrap').clientWidth - 4 || 800;
+  drawModalBar(cEl, sorted, mode);
+
+  // 테이블
+  var thead = document.getElementById('modal-thead');
+  var tbody = document.getElementById('modal-tbody');
+  if (mode === 'pyeong') {
+    thead.innerHTML = '<tr><th class="sort-btn" onclick="sortModal(0)">주택형 ↕</th><th>단지수</th><th class="sort-btn" onclick="sortModal(3)">총공급 ↕</th><th class="sort-btn" onclick="sortModal(4)">총접수 ↕</th><th class="sort-btn" onclick="sortModal(5)">경쟁률 ↕</th><th class="sort-btn" onclick="sortModal(6)">평당가(만) ↕</th><th>미달</th><th>단지목록</th></tr>';
+  } else {
+    thead.innerHTML = '<tr><th class="sort-btn" onclick="sortModal(0)">주택형 ↕</th><th>평형</th><th>단지수</th><th class="sort-btn" onclick="sortModal(3)">총공급 ↕</th><th class="sort-btn" onclick="sortModal(4)">총접수 ↕</th><th class="sort-btn" onclick="sortModal(5)">경쟁률 ↕</th><th class="sort-btn" onclick="sortModal(6)">평당가(만) ↕</th><th>미달</th></tr>';
+  }
+
+  window._modalItems = items;
+  window._modalMode = mode;
+  window._modalSortCol = 5;
+  window._modalSortAsc = false;
+  renderModalTable();
+}
+
+var _sortDir = -1, _sortCol = 5;
+function sortModal(col) {
+  if (_sortCol === col) _sortDir *= -1;
+  else { _sortCol = col; _sortDir = col === 0 ? 1 : -1; }
+  window._modalSortCol = col;
+  renderModalTable();
+}
+
+function renderModalTable() {
+  var items = window._modalItems.slice();
+  var col = window._modalSortCol;
+  var dir = _sortDir;
+  items.sort(function(a,b){
+    var av, bv;
+    if (col===0){ av=a.ty; bv=b.ty; return dir*(av<bv?-1:av>bv?1:0); }
+    if (col===3){ av=a.total_supply||0; bv=b.total_supply||0; return dir*(bv-av); }
+    if (col===4){ av=a.total_req||0; bv=b.total_req||0; return dir*(bv-av); }
+    if (col===5){ av=a.rate; bv=b.rate; }
+    if (col===6){ av=a.price; bv=b.price; }
+    return dir*(bv-av);
+  });
+  var tbody = document.getElementById('modal-tbody');
+  tbody.innerHTML = '';
+  var mode = window._modalMode;
+  items.forEach(function(it){
+    var tr = document.createElement('tr');
+    var rateCol = '<td style="color:'+col2(it.rate)+'font-weight:600">'+it.rate.toFixed(4)+'</td>';
+    var shortage = it.shortage>0?'<span class="sp">△'+it.shortage+'</span>':'-';
+    var nameList = it.names ? it.names.join(', ') : '-';
+    var countTd = '<td>'+(it.count||1)+'개</td>';
+    if (mode==='pyeong'){
+      tr.innerHTML = '<td style="font-weight:600">'+it.ty+'</td>'+countTd
+        +'<td>'+n(it.total_supply)+'</td>'
+        +'<td>'+n(it.total_req)+'</td>'
+        +rateCol
+        +'<td>'+n(it.price)+'</td>'
+        +'<td>'+shortage+'</td>'
+        +'<td style="font-family:var(--sans);font-size:10px;color:var(--mut)">'+nameList+'</td>';
+    } else {
+      tr.innerHTML = '<td style="font-weight:600">'+it.ty+'</td>'
+        +'<td style="font-family:var(--sans)">'+it.pyeong+'</td>'
+        +countTd
+        +'<td>'+n(it.total_supply)+'</td>'
+        +'<td>'+n(it.total_req)+'</td>'
+        +rateCol
+        +'<td>'+n(it.price)+'</td>'
+        +'<td>'+shortage+'</td>';
+    }
+    tbody.appendChild(tr);
+  });
+}
+
+function col2(r){return r>=10?'#3fb950':r>=3?'#58a6ff':r>=1?'#e3b341':'#f78166'}
+
+function drawModalBar(el, items, mode) {
+  var ctx=el.getContext('2d'), W=el.width, H=el.height;
+  var p={t:14,r:16,b:64,l:50}, cw=W-p.l-p.r, ch=H-p.t-p.b;
+  var vals=items.map(function(d){return d.rate});
+  var max=Math.max.apply(null,vals)*1.15||1;
+  var bw=Math.max(Math.floor(cw/items.length*0.65),4);
+  var gap=(cw-bw*items.length)/(items.length+1);
+  ctx.clearRect(0,0,W,H); ctx.fillStyle='#161b22'; ctx.fillRect(0,0,W,H);
+  // 격자
+  ctx.strokeStyle='#21262d'; ctx.lineWidth=1;
+  for(var i=0;i<=4;i++){
+    var y=p.t+ch*(1-i/4);
+    ctx.beginPath();ctx.moveTo(p.l,y);ctx.lineTo(p.l+cw,y);ctx.stroke();
+    ctx.fillStyle='#7d8590';ctx.font='9px monospace';ctx.textAlign='right';
+    ctx.fillText((max*i/4).toFixed(1),p.l-3,y+3);
+  }
+  items.forEach(function(it,i){
+    var x=p.l+gap+(bw+gap)*i, bh=ch*(it.rate/max), y=p.t+ch-bh;
+    var c=col2(it.rate);
+    var g2=ctx.createLinearGradient(0,y,0,y+bh);
+    g2.addColorStop(0,c+'ee'); g2.addColorStop(1,c+'44');
+    ctx.fillStyle=g2;
+    ctx.beginPath();
+    if(ctx.roundRect) ctx.roundRect(x,y,bw,bh,3); else ctx.rect(x,y,bw,bh);
+    ctx.fill();
+    // 값
+    ctx.fillStyle='#e6edf3'; ctx.font='bold 9px monospace'; ctx.textAlign='center';
+    if(it.rate>0) ctx.fillText(it.rate.toFixed(1), x+bw/2, Math.max(y-3, p.t+10));
+    // X축 라벨 (45도 기울임)
+    ctx.save();
+    ctx.translate(x+bw/2, H-p.b+6);
+    ctx.rotate(-Math.PI/4);
+    ctx.fillStyle='#7d8590'; ctx.font='9px monospace'; ctx.textAlign='right';
+    ctx.fillText(it.ty, 0, 0);
+    ctx.restore();
+  });
+  ctx.save();ctx.translate(12,p.t+ch/2);ctx.rotate(-Math.PI/2);
+  ctx.fillStyle='#7d8590';ctx.font='9px sans-serif';ctx.textAlign='center';
+  ctx.fillText('경쟁률',0,0);ctx.restore();
+}
+
+buildDongTable();
+buildDangiTable();
+render();
+window.addEventListener('resize', render);
+</script>
+
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal-box">
+    <div id="modal-head">
+      <div>
+        <h3 id="modal-title"></h3>
+        <div class="msub" id="modal-sub"></div>
+      </div>
+      <button id="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div id="modal-body">
+      <div id="modal-canvas-wrap"><canvas id="modal-canvas" height="180"></canvas></div>
+      <table class="modal-tbl">
+        <thead id="modal-thead"></thead>
+        <tbody id="modal-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
